@@ -9,11 +9,42 @@ export interface InstagramProfile {
 
 function graphBase() {
   const v = process.env.META_GRAPH_API_VERSION ?? "v24.0";
-  return `https://graph.instagram.com/${v}`;
+  return `https://graph.facebook.com/${v}`;
 }
 
 function token() {
   return process.env.INSTAGRAM_ACCESS_TOKEN ?? "";
+}
+
+/** Get the Instagram Business Account ID linked to this Page Token */
+export async function getInstagramBusinessAccountId(accessToken: string): Promise<string> {
+  const v = process.env.META_GRAPH_API_VERSION ?? "v24.0";
+  const url = `https://graph.facebook.com/${v}/me?fields=instagram_business_account&access_token=${accessToken}`;
+  console.log("[Instagram API] Fetching business account ID from /me");
+  const res = await fetch(url);
+  const data = await res.json();
+  if (data.error) {
+    console.error("[Instagram API] Error fetching business ID:", data.error);
+    throw new Error(data.error.message || "Failed to fetch Instagram Business Account ID");
+  }
+  const id = data.instagram_business_account?.id;
+  if (!id) {
+    throw new Error("No Instagram Business Account linked to this Facebook Page Access Token.");
+  }
+  return id;
+}
+
+/** Fetch business account details */
+export async function fetchInstagramBusinessProfile(accessToken: string, businessAccountId: string) {
+  const v = process.env.META_GRAPH_API_VERSION ?? "v24.0";
+  const url = `https://graph.facebook.com/${v}/${businessAccountId}?fields=name,username,profile_picture_url&access_token=${accessToken}`;
+  const res = await fetch(url);
+  const data = await res.json();
+  if (data.error) {
+    console.error("[Instagram API] Error fetching business profile:", data.error);
+    throw new Error(data.error.message);
+  }
+  return data;
 }
 
 export async function fetchInstagramProfile(
@@ -26,8 +57,13 @@ export async function fetchInstagramProfile(
   );
   url.searchParams.set("access_token", token());
 
+  console.log(`[Instagram API] Fetching profile for IGSID: ${igsid}`);
   const res = await fetch(url.toString());
   const data = await res.json();
+
+  if (data.error) {
+    console.error(`[Instagram API] Error fetching profile for ${igsid}:`, data.error);
+  }
 
   return {
     name: data.name ?? null,
@@ -46,6 +82,7 @@ export async function sendInstagramMessage(
   const url = new URL(`${graphBase()}/me/messages`);
   url.searchParams.set("access_token", token());
 
+  console.log(`[Instagram API] Sending message to ${recipientIgsid}`);
   const res = await fetch(url.toString(), {
     method: "POST",
     headers: { "Content-Type": "application/json" },
@@ -54,7 +91,11 @@ export async function sendInstagramMessage(
       message: { text },
     }),
   });
-  return res.json();
+  const data = await res.json();
+  if (data.error) {
+    console.error("[Instagram API] Send message error:", data.error);
+  }
+  return data;
 }
 
 /** Send a private reply to an Instagram comment (comment-to-DM) */
@@ -64,8 +105,11 @@ export async function sendPrivateReply(
   commentId: string,
   message: string
 ) {
+  // Use graphBase() to query the endpoint
+  const url = `${graphBase()}/${instagramAccountId}/messages`;
+  console.log(`[Instagram API] Sending private reply to comment: ${commentId}`);
   const res = await fetch(
-    `${graphBase()}/${instagramAccountId}/messages`,
+    url,
     {
       method: "POST",
       headers: {
@@ -78,7 +122,12 @@ export async function sendPrivateReply(
       }),
     }
   );
-  return res.json();
+  const data = await res.json();
+  if (data.error) {
+    console.error("[Instagram API] Private reply error:", data.error);
+    throw new Error(data.error.message);
+  }
+  return data;
 }
 
 export interface InstagramMedia {
@@ -95,15 +144,27 @@ export async function getUserMedia(
   accessToken: string,
   limit = 25
 ): Promise<InstagramMedia[]> {
-  const url = new URL(`${graphBase()}/me/media`);
-  url.searchParams.set(
-    "fields",
-    "id,caption,media_type,media_url,thumbnail_url,timestamp,permalink"
-  );
-  url.searchParams.set("limit", limit.toString());
-  url.searchParams.set("access_token", accessToken);
+  try {
+    const businessId = await getInstagramBusinessAccountId(accessToken);
+    const v = process.env.META_GRAPH_API_VERSION ?? "v24.0";
+    const url = new URL(`https://graph.facebook.com/${v}/${businessId}/media`);
+    url.searchParams.set(
+      "fields",
+      "id,caption,media_type,media_url,thumbnail_url,timestamp,permalink"
+    );
+    url.searchParams.set("limit", limit.toString());
+    url.searchParams.set("access_token", accessToken);
 
-  const res = await fetch(url.toString());
-  const data = await res.json();
-  return data.data ?? [];
+    console.log(`[Instagram API] Fetching media from business account: ${businessId}`);
+    const res = await fetch(url.toString());
+    const data = await res.json();
+    if (data.error) {
+      console.error("[Instagram API] Error fetching media:", data.error);
+      throw new Error(data.error.message);
+    }
+    return data.data ?? [];
+  } catch (error) {
+    console.error("[Instagram API] Exception in getUserMedia:", error);
+    throw error;
+  }
 }

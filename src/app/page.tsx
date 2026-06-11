@@ -354,6 +354,7 @@ function PostPicker({
   const [posts, setPosts] = useState<InstagramPost[]>([]);
   const [loading, setLoading] = useState(true);
   const [error, setError] = useState<string | null>(null);
+  const [viewMode, setViewMode] = useState<"grid" | "list">("grid");
 
   useEffect(() => {
     fetch("/api/instagram/posts")
@@ -408,86 +409,171 @@ function PostPicker({
     );
 
   return (
-    <div
-      style={{
-        display: "grid",
-        gridTemplateColumns: "repeat(4,1fr)",
-        gap: 8,
-        maxHeight: 220,
-        overflowY: "auto",
-      }}
-    >
-      {posts.map((post) => {
-        const thumb = post.thumbnail_url ?? post.media_url;
-        const selected = selectedPostId === post.id;
-        return (
-          <button
-            key={post.id}
-            type="button"
-            onClick={() => onSelect(post.id, post.permalink)}
-            style={{
-              aspectRatio: "1",
-              borderRadius: 10,
-              overflow: "hidden",
-              border: selected
-                ? "2px solid var(--accent)"
-                : "2px solid transparent",
-              cursor: "pointer",
-              position: "relative",
-              outline: selected ? "2px solid rgba(124,58,237,.3)" : "none",
-              outlineOffset: 2,
-              transition: "all .15s",
-            }}
-          >
-            {thumb ? (
-              // eslint-disable-next-line @next/next/no-img-element
-              <img
-                src={thumb}
-                alt={post.caption?.slice(0, 40) ?? "post"}
-                style={{ width: "100%", height: "100%", objectFit: "cover" }}
-              />
-            ) : (
-              <div
+    <div style={{ display: "flex", flexDirection: "column", gap: 12 }}>
+      <div style={{ display: "flex", justifyContent: "space-between", alignItems: "center" }}>
+        <span style={{ fontSize: 12, color: "var(--muted)" }}>Select a post for this campaign:</span>
+        <button
+          type="button"
+          onClick={() => setViewMode(prev => prev === "grid" ? "list" : "grid")}
+          style={{
+            background: "var(--surface2)",
+            border: "1px solid var(--border)",
+            borderRadius: 6,
+            color: "var(--text)",
+            padding: "4px 8px",
+            fontSize: 11,
+            cursor: "pointer"
+          }}
+        >
+          {viewMode === "grid" ? "📝 Show Text List (Fallback)" : "🖼️ Show Grid"}
+        </button>
+      </div>
+
+      {viewMode === "grid" ? (
+        <div
+          style={{
+            display: "grid",
+            gridTemplateColumns: "repeat(4,1fr)",
+            gap: 8,
+            maxHeight: 220,
+            overflowY: "auto",
+          }}
+        >
+          {posts.map((post) => {
+            const thumb = post.thumbnail_url ?? post.media_url;
+            const selected = selectedPostId === post.id;
+            return (
+              <button
+                key={post.id}
+                type="button"
+                onClick={() => onSelect(post.id, post.permalink)}
                 style={{
-                  width: "100%",
-                  height: "100%",
-                  background: "var(--surface2)",
-                  display: "flex",
-                  alignItems: "center",
-                  justifyContent: "center",
-                  color: "var(--muted)",
-                  fontSize: 20,
+                  aspectRatio: "1",
+                  borderRadius: 10,
+                  overflow: "hidden",
+                  border: selected
+                    ? "2px solid var(--accent)"
+                    : "2px solid transparent",
+                  cursor: "pointer",
+                  position: "relative",
+                  outline: selected ? "2px solid rgba(124,58,237,.3)" : "none",
+                  outlineOffset: 2,
+                  transition: "all .15s",
                 }}
               >
-                📷
-              </div>
-            )}
-            {selected && (
-              <div
-                style={{
-                  position: "absolute",
-                  inset: 0,
-                  background: "rgba(124,58,237,.3)",
-                  display: "flex",
-                  alignItems: "center",
-                  justifyContent: "center",
-                }}
-              >
-                <svg
-                  width="20"
-                  height="20"
-                  viewBox="0 0 24 24"
-                  fill="none"
-                  stroke="white"
-                  strokeWidth="3"
+                {thumb ? (
+                  // eslint-disable-next-line @next/next/no-img-element
+                  <img
+                    src={thumb}
+                    alt={post.caption?.slice(0, 40) ?? "post"}
+                    style={{ width: "100%", height: "100%", objectFit: "cover" }}
+                    onError={(e) => {
+                      (e.target as HTMLElement).style.display = "none";
+                      const parent = (e.target as HTMLElement).parentElement;
+                      if (parent) {
+                        const fallbackDiv = parent.querySelector(".grid-fallback-text");
+                        if (fallbackDiv) (fallbackDiv as HTMLElement).style.display = "flex";
+                      }
+                    }}
+                  />
+                ) : null}
+                <div
+                  className="grid-fallback-text"
+                  style={{
+                    display: thumb ? "none" : "flex",
+                    width: "100%",
+                    height: "100%",
+                    background: "var(--surface2)",
+                    flexDirection: "column",
+                    alignItems: "center",
+                    justifyContent: "center",
+                    color: "var(--text)",
+                    padding: 4,
+                    fontSize: 9,
+                    textAlign: "center"
+                  }}
                 >
-                  <polyline points="20 6 9 17 4 12" />
-                </svg>
+                  <span style={{ fontSize: 14, marginBottom: 2 }}>📷</span>
+                  <span style={{ overflow: "hidden", textOverflow: "ellipsis", display: "-webkit-box", WebkitLineClamp: 2, WebkitBoxOrient: "vertical" }}>
+                    {post.caption || `Post ${post.id.slice(-4)}`}
+                  </span>
+                </div>
+                {selected && (
+                  <div
+                    style={{
+                      position: "absolute",
+                      inset: 0,
+                      background: "rgba(124,58,237,.3)",
+                      display: "flex",
+                      alignItems: "center",
+                      justifyContent: "center",
+                    }}
+                  >
+                    <svg
+                      width="20"
+                      height="20"
+                      viewBox="0 0 24 24"
+                      fill="none"
+                      stroke="white"
+                      strokeWidth="3"
+                    >
+                      <polyline points="20 6 9 17 4 12" />
+                    </svg>
+                  </div>
+                )}
+              </button>
+            );
+          })}
+        </div>
+      ) : (
+        <div style={{ display: "flex", flexDirection: "column", gap: 6, maxHeight: 220, overflowY: "auto", paddingRight: 4 }}>
+          {posts.map((post) => {
+            const selected = selectedPostId === post.id;
+            return (
+              <div
+                key={post.id}
+                style={{
+                  display: "flex",
+                  justifyContent: "space-between",
+                  alignItems: "center",
+                  padding: "8px 12px",
+                  background: selected ? "rgba(124,58,237,.1)" : "var(--surface2)",
+                  border: selected ? "1px solid var(--accent)" : "1px solid var(--border)",
+                  borderRadius: 8,
+                  gap: 12
+                }}
+              >
+                <div style={{ display: "flex", flexDirection: "column", gap: 2, flex: 1, minWidth: 0 }}>
+                  <span style={{ fontSize: 13, fontWeight: 500, color: "var(--text)", overflow: "hidden", textOverflow: "ellipsis", whiteSpace: "nowrap" }}>
+                    {post.caption || "(No caption)"}
+                  </span>
+                  <div style={{ display: "flex", gap: 12, fontSize: 10, color: "var(--muted)" }}>
+                    <span>ID: {post.id}</span>
+                    <span>Date: {new Date(post.timestamp).toLocaleDateString()}</span>
+                  </div>
+                </div>
+                <button
+                  type="button"
+                  onClick={() => onSelect(post.id, post.permalink)}
+                  style={{
+                    backgroundColor: selected ? "var(--accent)" : "transparent",
+                    color: selected ? "#fff" : "var(--text)",
+                    border: selected ? "1px solid var(--accent)" : "1px solid var(--border)",
+                    padding: "4px 10px",
+                    borderRadius: 6,
+                    fontSize: 11,
+                    fontWeight: 600,
+                    cursor: "pointer",
+                    transition: "all .15s"
+                  }}
+                >
+                  {selected ? "Selected" : "Select"}
+                </button>
               </div>
-            )}
-          </button>
-        );
-      })}
+            );
+          })}
+        </div>
+      )}
     </div>
   );
 }
