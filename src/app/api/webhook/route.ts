@@ -353,16 +353,25 @@ async function handleCommentEvent({
   console.log(`[Comment Handler] Found ${automations.length} active automation(s). Matching keywords...`);
 
   for (const automation of automations) {
-    const matchResult = matchKeywords(
-      commentText,
-      automation.keywords,
-      automation.wholeWordMatch
-    );
-    console.log(`[Comment Handler] Keyword matching details:`, {
-      commentText,
-      keywords: automation.keywords,
-      matchResult
-    });
+    const isAnyComment = automation.keywords.includes("ANY_COMMENT") || automation.keywords.includes("*");
+    
+    let matchResult: { matched: boolean; matchedKeyword: string | null } = { matched: false, matchedKeyword: null };
+    
+    if (isAnyComment) {
+      matchResult = { matched: true, matchedKeyword: "ANY_COMMENT" };
+      console.log(`[Comment Handler] Automation uses ANY_COMMENT bypass. Allowing match.`);
+    } else {
+      matchResult = matchKeywords(
+        commentText,
+        automation.keywords,
+        automation.wholeWordMatch
+      );
+      console.log(`[Comment Handler] Keyword matching details:`, {
+        commentText,
+        keywords: automation.keywords,
+        matchResult
+      });
+    }
 
     if (!matchResult.matched) continue;
 

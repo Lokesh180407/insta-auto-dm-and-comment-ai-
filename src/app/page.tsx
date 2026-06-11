@@ -600,6 +600,11 @@ function InboxTab() {
     if (Array.isArray(data)) setConversations(data);
   }, []);
 
+  const selectedIdRef = useRef<string | null>(null);
+  useEffect(() => {
+    selectedIdRef.current = selectedId;
+  }, [selectedId]);
+
   const fetchMessages = useCallback(async (id: string) => {
     const res = await fetch(`/api/conversations/${id}/messages`);
     const data = await res.json();
@@ -628,11 +633,12 @@ function InboxTab() {
         { event: "INSERT", schema: "public", table: "instagram_messages" },
         (payload) => {
           const msg = payload.new as Message;
-          if (msg.conversation_id === selectedId) {
-            setMessages((prev) =>
-              prev.some((m) => m.id === msg.id) ? prev : [...prev, msg]
-            );
-          }
+          setMessages((prev) => {
+            if (msg.conversation_id === selectedIdRef.current) {
+              return prev.some((m) => m.id === msg.id) ? prev : [...prev, msg];
+            }
+            return prev;
+          });
           fetchConversations();
         }
       )
@@ -651,7 +657,7 @@ function InboxTab() {
       supabase.removeChannel(chMsg); 
       supabase.removeChannel(chConv); 
     };
-  }, [selectedId, fetchConversations, supabase]);
+  }, [fetchConversations, supabase]);
 
   async function toggleMode() {
     if (!selected) return;
@@ -666,17 +672,27 @@ function InboxTab() {
     );
   }
 
+  const [sendError, setSendError] = useState<string | null>(null);
+
   async function handleSend() {
     if (!input.trim() || !selectedId || sending) return;
     setSending(true);
-    await fetch(`/api/conversations/${selectedId}/send`, {
-      method: "POST",
-      headers: { "Content-Type": "application/json" },
-      body: JSON.stringify({ message: input.trim() }),
-    });
-    setInput("");
-    setSending(false);
-    fetchMessages(selectedId);
+    setSendError(null);
+    try {
+      const res = await fetch(`/api/conversations/${selectedId}/send`, {
+        method: "POST",
+        headers: { "Content-Type": "application/json" },
+        body: JSON.stringify({ message: input.trim() }),
+      });
+      const data = await res.json();
+      if (!res.ok) throw new Error(data.error || "Failed to send message");
+      setInput("");
+      fetchMessages(selectedId);
+    } catch (err: any) {
+      setSendError(err.message);
+    } finally {
+      setSending(false);
+    }
   }
 
   function ft(d: string) {
@@ -861,7 +877,7 @@ function InboxTab() {
             {/* Header */}
             <div
               style={{
-                padding: "14px 20px",
+                padding: "16px 20px",
                 borderBottom: "1px solid var(--border)",
                 display: "flex",
                 alignItems: "center",
@@ -869,71 +885,37 @@ function InboxTab() {
                 background: "var(--surface)",
               }}
             >
-              <div style={{ display: "flex", alignItems: "center", gap: 12 }}>
+              <div style={{ display: "flex", alignItems: "center", gap: 14 }}>
                 <Avatar
                   src={selected.profile_pic}
                   name={selected.name}
                   igsid={selected.igsid}
-                  size={42}
+                  size={44}
                 />
                 <div>
-                  <div style={{ display: "flex", alignItems: "center", gap: 8 }}>
-                    <span style={{ fontSize: 14, fontWeight: 600 }}>
+                  <div style={{ display: "flex", alignItems: "center", gap: 6 }}>
+                    <span style={{ fontSize: 16, fontWeight: 700, letterSpacing: "-0.2px" }}>
                       {selected.name ?? selected.username ?? selected.igsid}
                     </span>
-                    {selected.username && (
-                      <span style={{ fontSize: 12, color: "var(--muted)" }}>
-                        @{selected.username}
-                      </span>
-                    )}
                   </div>
-                  <div style={{ display: "flex", gap: 8, marginTop: 3 }}>
-                    {selected.follower_count != null && (
-                      <span style={{ fontSize: 11, color: "var(--muted)" }}>
-                        <strong style={{ color: "var(--text)" }}>
-                          {selected.follower_count.toLocaleString()}
-                        </strong>{" "}
-                        followers
-                      </span>
-                    )}
-                    {selected.is_user_follow_business != null && (
-                      <span
-                        style={{
-                          fontSize: 10,
-                          padding: "2px 7px",
-                          borderRadius: 99,
-                          background: selected.is_user_follow_business
-                            ? "rgba(124,58,237,.15)"
-                            : "rgba(255,255,255,.06)",
-                          color: selected.is_user_follow_business
-                            ? "#a78bfa"
-                            : "var(--muted)",
-                        }}
-                      >
-                        {selected.is_user_follow_business
-                          ? "Follows you"
-                          : "Doesn't follow"}
-                      </span>
-                    )}
-                  </div>
+                  {selected.username && (
+                    <div style={{ fontSize: 12, color: "var(--muted)", marginTop: 2 }}>
+                      @{selected.username}
+                    </div>
+                  )}
                 </div>
               </div>
-              <button
-                onClick={toggleMode}
-                className={
-                  selected.mode === "agent"
-                    ? "badge badge-ai"
-                    : "badge badge-human"
-                }
-                style={{
-                  cursor: "pointer",
-                  border: "none",
-                  padding: "5px 12px",
-                  fontSize: 11,
-                }}
-              >
-                {selected.mode === "agent" ? "⚡ AI Mode" : "👤 Human Mode"}
-              </button>
+              <div style={{ display: "flex", alignItems: "center", gap: 10 }}>
+                <span style={{ fontSize: 12, fontWeight: 500, color: "var(--muted)" }}>
+                  {selected.mode === "agent" ? "AI Auto-Reply" : "Manual Reply"}
+                </span>
+                <button
+                  type="button"
+                  className={`toggle ${selected.mode === "agent" ? "on" : ""}`}
+                  onClick={toggleMode}
+                  title="Toggle AI Agent Auto-Reply"
+                />
+              </div>
             </div>
 
             {/* Messages */}
@@ -944,7 +926,7 @@ function InboxTab() {
                 padding: "20px 24px",
                 display: "flex",
                 flexDirection: "column",
-                gap: 12,
+                gap: 8,
               }}
             >
               {messages.map((msg, i) => {
@@ -952,6 +934,15 @@ function InboxTab() {
                 const showTime =
                   i === messages.length - 1 ||
                   messages[i + 1]?.role !== msg.role;
+                
+                // Grouping logic for borders
+                const prevIsSame = i > 0 && messages[i - 1].role === msg.role;
+                const nextIsSame = i < messages.length - 1 && messages[i + 1].role === msg.role;
+                
+                const borderRadius = isUser
+                  ? `${prevIsSame ? "4px" : "18px"} 18px 18px ${nextIsSame ? "4px" : "18px"}`
+                  : `18px ${prevIsSame ? "4px" : "18px"} ${nextIsSame ? "4px" : "18px"} 18px`;
+
                 return (
                   <div
                     key={msg.id}
@@ -961,55 +952,55 @@ function InboxTab() {
                       alignItems: "flex-end",
                       gap: 8,
                       justifyContent: isUser ? "flex-start" : "flex-end",
+                      marginBottom: nextIsSame ? 2 : 12,
                     }}
                   >
-                    {isUser && (
+                    {isUser && !nextIsSame ? (
                       <Avatar
                         src={selected.profile_pic}
                         name={selected.name}
                         igsid={selected.igsid}
-                        size={26}
+                        size={28}
                       />
+                    ) : (
+                      isUser && <div style={{ width: 28 }} />
                     )}
                     <div
                       style={{
                         display: "flex",
                         flexDirection: "column",
                         alignItems: isUser ? "flex-start" : "flex-end",
-                        maxWidth: "62%",
+                        maxWidth: "65%",
                       }}
                     >
                       <div
                         style={{
-                          padding: "10px 14px",
-                          borderRadius: isUser
-                            ? "16px 16px 16px 4px"
-                            : "16px 16px 4px 16px",
-                          fontSize: 14,
-                          lineHeight: 1.5,
+                          padding: "10px 16px",
+                          borderRadius: borderRadius,
+                          fontSize: 14.5,
+                          lineHeight: 1.4,
                           background: isUser
-                            ? "rgba(255,255,255,.07)"
-                            : "var(--insta-grad)",
-                          color: "var(--text)",
-                          border: isUser
-                            ? "1px solid var(--border)"
-                            : "none",
+                            ? "var(--surface2)" // Gray for received
+                            : "#3797f0", // Instagram blue for sent
+                          color: isUser ? "var(--text)" : "#fff",
+                          border: "none",
                         }}
                       >
-                        <p style={{ whiteSpace: "pre-wrap" }}>{msg.content}</p>
+                        <p style={{ whiteSpace: "pre-wrap", margin: 0 }}>{msg.content}</p>
                       </div>
                       {showTime && (
                         <p
                           style={{
-                            fontSize: 10,
+                            fontSize: 11,
                             color: "var(--muted)",
                             marginTop: 4,
                             paddingLeft: 4,
+                            paddingRight: 4,
                           }}
                         >
                           {!isUser && (
-                            <span style={{ color: "#a78bfa", marginRight: 4 }}>
-                              AI ·
+                            <span style={{ color: "#3797f0", marginRight: 4, fontWeight: 500 }}>
+                              Sent ·
                             </span>
                           )}
                           {ft(msg.created_at)}
@@ -1025,11 +1016,16 @@ function InboxTab() {
             {/* Input */}
             <div
               style={{
-                padding: "14px 20px",
+                padding: "16px 20px",
                 borderTop: "1px solid var(--border)",
                 background: "var(--surface)",
               }}
             >
+              {sendError && (
+                <div style={{ color: "#f87171", fontSize: 12, marginBottom: 8, padding: "4px 8px", background: "rgba(248,113,113,0.1)", borderRadius: 6 }}>
+                  Error: {sendError}
+                </div>
+              )}
               <div
                 style={{
                   display: "flex",
@@ -1230,21 +1226,36 @@ function CampaignsTab({
 
               {/* Keywords */}
               <div style={{ display: "flex", flexWrap: "wrap", gap: 5, marginBottom: 10 }}>
-                {auto.keywords.map((kw) => (
+                {auto.keywords.includes("ANY_COMMENT") ? (
                   <span
-                    key={kw}
                     style={{
-                      padding: "2px 9px",
+                      padding: "3px 10px",
                       borderRadius: 99,
-                      background: "rgba(124,58,237,.15)",
-                      color: "#a78bfa",
+                      background: "rgba(52, 211, 153, .15)",
+                      color: "#34d399",
                       fontSize: 11,
                       fontWeight: 600,
                     }}
                   >
-                    {kw}
+                    Replies to ANY comment
                   </span>
-                ))}
+                ) : (
+                  auto.keywords.map((kw) => (
+                    <span
+                      key={kw}
+                      style={{
+                        padding: "2px 9px",
+                        borderRadius: 99,
+                        background: "rgba(124,58,237,.15)",
+                        color: "#a78bfa",
+                        fontSize: 11,
+                        fontWeight: 600,
+                      }}
+                    >
+                      {kw}
+                    </span>
+                  ))
+                )}
               </div>
 
               {/* DM preview */}
@@ -1367,12 +1378,15 @@ function NewCampaignTab({ onDone }: { onDone: () => void }) {
   const [trackedUrl, setTrackedUrl] = useState("");
   const [wholeWordMatch, setWholeWordMatch] = useState(true);
   const [isActive, setIsActive] = useState(true);
+  const [anyComment, setAnyComment] = useState(false);
 
   const effectivePostId = postId ?? (manualPostId.trim() || null);
 
   async function handleSubmit(e: React.FormEvent) {
     e.preventDefault();
-    if (!name || !effectivePostId || keywords.length === 0 || !dmMessage) {
+    const finalKeywords = anyComment ? ["ANY_COMMENT"] : keywords;
+
+    if (!name || !effectivePostId || finalKeywords.length === 0 || !dmMessage) {
       setError("Please fill in all required fields.");
       return;
     }
@@ -1386,7 +1400,7 @@ function NewCampaignTab({ onDone }: { onDone: () => void }) {
         goal: goal || null,
         postId: effectivePostId,
         postUrl: postUrl ?? null,
-        keywords,
+        keywords: finalKeywords,
         dmMessage,
         trackedDestinationUrl: trackedUrl || null,
         isActive,
@@ -1490,16 +1504,35 @@ function NewCampaignTab({ onDone }: { onDone: () => void }) {
           />
         </div>
 
-        {/* Keywords */}
-        <div>
-          <label className="label">
-            Trigger Keywords <span style={{ color: "var(--error)" }}>*</span>
+        {/* Any Comment Toggle */}
+        <div style={{ paddingBottom: 8, borderBottom: "1px solid var(--border)" }}>
+          <label style={{ display: "flex", alignItems: "center", gap: 12, cursor: "pointer" }}>
+            <button
+              type="button"
+              className={`toggle ${anyComment ? "on" : ""}`}
+              onClick={() => setAnyComment(!anyComment)}
+            />
+            <div>
+              <span style={{ fontSize: 13, fontWeight: 500 }}>Reply to ANY comment</span>
+              <p style={{ fontSize: 12, color: "var(--muted)", marginTop: 2 }}>
+                Ignore keywords and automatically DM every single comment.
+              </p>
+            </div>
           </label>
-          <p style={{ fontSize: 12, color: "var(--muted)", marginBottom: 8 }}>
-            When a commenter types any of these words, the DM is sent automatically.
-          </p>
-          <KeywordInput keywords={keywords} onChange={setKeywords} />
         </div>
+
+        {/* Keywords */}
+        {!anyComment && (
+          <div className="fade-in">
+            <label className="label">
+              Trigger Keywords <span style={{ color: "var(--error)" }}>*</span>
+            </label>
+            <p style={{ fontSize: 12, color: "var(--muted)", marginBottom: 8 }}>
+              When a commenter types any of these words, the DM is sent automatically.
+            </p>
+            <KeywordInput keywords={keywords} onChange={setKeywords} />
+          </div>
+        )}
 
         {/* DM message */}
         <div>
