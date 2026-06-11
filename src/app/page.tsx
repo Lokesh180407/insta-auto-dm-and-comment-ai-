@@ -174,26 +174,46 @@ function TrashIcon() {
 }
 
 // ─── Avatar component ─────────────────────────────────────────────────────────
+// Generates a deterministic gradient color from the igsid so each user
+// has a unique colored avatar even when no profile picture is available.
+function avatarGradient(igsid: string): string {
+  let hash = 0;
+  for (let i = 0; i < igsid.length; i++) {
+    hash = igsid.charCodeAt(i) + ((hash << 5) - hash);
+  }
+  const h1 = Math.abs(hash) % 360;
+  const h2 = (h1 + 40) % 360;
+  return `linear-gradient(135deg, hsl(${h1},70%,55%), hsl(${h2},80%,45%))`;
+}
+
 function Avatar({
   src,
   name,
+  username,
   igsid,
   size,
 }: {
   src: string | null;
   name: string | null;
+  username?: string | null;
   igsid: string;
   size: number;
 }) {
-  const initials = name ? name.slice(0, 2).toUpperCase() : igsid.slice(-2);
-  const style = {
+  // Best initials: use username first, then name, then last 2 of igsid
+  const initials = username
+    ? username.slice(0, 2).toUpperCase()
+    : name
+    ? name.slice(0, 2).toUpperCase()
+    : igsid.slice(-2).toUpperCase();
+
+  const baseStyle = {
     width: size,
     height: size,
     minWidth: size,
-    fontSize: size * 0.32,
+    fontSize: size * 0.34,
     borderRadius: "50%",
     overflow: "hidden",
-    flexShrink: 0,
+    flexShrink: 0 as const,
     display: "flex",
     alignItems: "center",
     justifyContent: "center",
@@ -201,31 +221,35 @@ function Avatar({
 
   if (src) {
     return (
-      <div style={style}>
+      <div style={baseStyle}>
         <Image
           src={src}
-          alt={name ?? igsid}
+          alt={name ?? username ?? igsid}
           width={size}
           height={size}
           style={{ width: "100%", height: "100%", objectFit: "cover" }}
           unoptimized
+          onError={() => {/* will fall through to initials on next render if img errors */}}
         />
       </div>
     );
   }
+
   return (
     <div
       style={{
-        ...style,
-        background: "var(--insta-grad)",
+        ...baseStyle,
+        background: avatarGradient(igsid),
         color: "#fff",
         fontWeight: 700,
+        letterSpacing: "-0.5px",
       }}
     >
       {initials}
     </div>
   );
 }
+
 
 // ─── Status badge ─────────────────────────────────────────────────────────────
 function StatusBadge({ status }: { status: string }) {
@@ -736,6 +760,7 @@ function InboxTab() {
       conversation_id: selectedId,
       role: "assistant",
       content: msgText,
+      instagram_msg_id: null,
       created_at: new Date().toISOString(),
     };
     setMessages((prev) => [...prev, optimisticMsg]);
@@ -842,6 +867,7 @@ function InboxTab() {
                 <Avatar
                   src={convo.profile_pic}
                   name={convo.name}
+                  username={convo.username}
                   igsid={convo.igsid}
                   size={40}
                 />
@@ -962,6 +988,7 @@ function InboxTab() {
                 <Avatar
                   src={selected.profile_pic}
                   name={selected.name}
+                  username={selected.username}
                   igsid={selected.igsid}
                   size={44}
                 />
@@ -1055,6 +1082,7 @@ function InboxTab() {
                       <Avatar
                         src={selected.profile_pic}
                         name={selected.name}
+                        username={selected.username}
                         igsid={selected.igsid}
                         size={28}
                       />
