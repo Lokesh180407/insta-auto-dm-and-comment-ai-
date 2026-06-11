@@ -578,6 +578,32 @@ function PostPicker({
   );
 }
 
+// ─── Typing bubble (3 animated dots) ────────────────────────────────────────
+function TypingBubble() {
+  return (
+    <div style={{ display: "flex", alignItems: "flex-end", gap: 8, justifyContent: "flex-start" }}>
+      <div style={{
+        padding: "12px 16px",
+        borderRadius: "18px 18px 18px 4px",
+        background: "var(--surface2)",
+        display: "flex",
+        gap: 4,
+        alignItems: "center",
+      }}>
+        {[0, 1, 2].map((i) => (
+          <span key={i} style={{
+            width: 7, height: 7, borderRadius: "50%",
+            background: "#9ca3af",
+            display: "inline-block",
+            animation: `typing-bounce 1.2s infinite ease-in-out`,
+            animationDelay: `${i * 0.2}s`,
+          }} />
+        ))}
+      </div>
+    </div>
+  );
+}
+
 // ═════════════════════════════════════════════════════════════════════════════
 // ── INBOX TAB ──────────────────────────────────────────────────────────────
 // ═════════════════════════════════════════════════════════════════════════════
@@ -590,6 +616,7 @@ function InboxTab() {
   const [messages, setMessages] = useState<Message[]>([]);
   const [input, setInput] = useState("");
   const [sending, setSending] = useState(false);
+  const [isTyping, setIsTyping] = useState(false);
   const messagesEndRef = useRef<HTMLDivElement>(null);
 
   const selected = conversations.find((c) => c.id === selectedId);
@@ -647,6 +674,7 @@ function InboxTab() {
         { event: "INSERT", schema: "public", table: "instagram_messages" },
         (payload) => {
           const msg = payload.new as Message;
+          setIsTyping(false); // hide typing when message arrives
           setMessages((prev) => {
             if (msg.conversation_id === selectedIdRef.current) {
               return prev.some((m) => m.id === msg.id) ? prev : [...prev, msg];
@@ -667,9 +695,9 @@ function InboxTab() {
       )
       .subscribe();
 
-    return () => { 
-      supabase.removeChannel(chMsg); 
-      supabase.removeChannel(chConv); 
+    return () => {
+      supabase.removeChannel(chMsg);
+      supabase.removeChannel(chConv);
     };
   }, [fetchConversations, supabase]);
 
@@ -699,22 +727,40 @@ function InboxTab() {
 
   async function handleSend() {
     if (!input.trim() || !selectedId || sending) return;
+    const msgText = input.trim();
     setSending(true);
     setSendError(null);
+    // Optimistically add message to UI immediately
+    const optimisticMsg: Message = {
+      id: `temp-${Date.now()}`,
+      conversation_id: selectedId,
+      role: "assistant",
+      content: msgText,
+      created_at: new Date().toISOString(),
+    };
+    setMessages((prev) => [...prev, optimisticMsg]);
+    setInput("");
+    // Show typing indicator if AI mode
+    if (conversations.find((c) => c.id === selectedId)?.mode === "agent") {
+      setIsTyping(true);
+    }
     try {
       const res = await fetch(`/api/conversations/${selectedId}/send`, {
         method: "POST",
         headers: { "Content-Type": "application/json" },
-        body: JSON.stringify({ message: input.trim() }),
+        body: JSON.stringify({ message: msgText }),
       });
       const data = await res.json();
       if (!res.ok) throw new Error(data.error || "Failed to send message");
-      setInput("");
+      // Replace optimistic message with real one
       fetchMessages(selectedId);
     } catch (err: any) {
       setSendError(err.message);
+      // Remove optimistic message on failure
+      setMessages((prev) => prev.filter((m) => m.id !== optimisticMsg.id));
     } finally {
       setSending(false);
+      setIsTyping(false);
     }
   }
 
@@ -1030,8 +1076,8 @@ function InboxTab() {
                           fontSize: 14.5,
                           lineHeight: 1.4,
                           background: isUser
-                            ? "var(--surface2)" // Gray for received
-                            : "#3797f0", // Instagram blue for sent
+                            ? "var(--surface2)"
+                            : "#3797f0",
                           color: isUser ? "var(--text)" : "#fff",
                           border: "none",
                         }}
@@ -1049,8 +1095,8 @@ function InboxTab() {
                           }}
                         >
                           {!isUser && (
-                            <span style={{ color: "#3797f0", marginRight: 4, fontWeight: 500 }}>
-                              Sent ·
+                            <span style={{ color: msg.id.startsWith("temp-") ? "#fbbf24" : "#3797f0", marginRight: 4, fontWeight: 500 }}>
+                              {msg.id.startsWith("temp-") ? "Sending..." : "Sent"} ·
                             </span>
                           )}
                           {ft(msg.created_at)}
@@ -1060,6 +1106,8 @@ function InboxTab() {
                   </div>
                 );
               })}
+              {/* Typing indicator — shown when AI is processing */}
+              {isTyping && <TypingBubble />}
               <div ref={messagesEndRef} />
             </div>
 
@@ -1899,18 +1947,39 @@ function SettingsTab() {
   const supabaseUrl = process.env.NEXT_PUBLIC_SUPABASE_URL;
   const hasAnonKey = !!process.env.NEXT_PUBLIC_SUPABASE_ANON_KEY;
 
-  const configs = [
-    {
-      label: "Supabase URL",
-      value: supabaseUrl ?? "Not configured",
-      ok: !!supabaseUrl,
-    },
-    {
-      label: "Supabase Anon Key",
-      value: hasAnonKey ? "✓ Configured" : "Not configured",
-      ok: hasAnonKey,
-    },
-  ];
+  const [systemPrompt, setSystemPrompt] = useState("");
+  const [loadingPrompt, setLoadingPrompt] = useState(true);
+  const [saving, setSaving] = useState(false);
+  const [saveMsg, setSaveMsg] = useState<string | null>(null);
+
+  useEffect(() => {
+    fetch("/api/settings")
+      .then((r) => r.json())
+      .then((d) => {
+        setSystemPrompt(d.system_prompt ?? "");
+      })
+      .catch(() => {})
+      .finally(() => setLoadingPrompt(false));
+  }, []);
+
+  async function handleSavePrompt() {
+    setSaving(true);
+    setSaveMsg(null);
+    try {
+      const res = await fetch("/api/settings", {
+        method: "POST",
+        headers: { "Content-Type": "application/json" },
+        body: JSON.stringify({ system_prompt: systemPrompt }),
+      });
+      const data = await res.json();
+      if (!res.ok) throw new Error(data.error || "Failed to save");
+      setSaveMsg("✓ Saved successfully! AI will use this prompt on the next message.");
+    } catch (err: any) {
+      setSaveMsg(`Error: ${err.message}`);
+    } finally {
+      setSaving(false);
+    }
+  }
 
   const envVars = [
     "SUPABASE_SERVICE_ROLE_KEY",
@@ -1921,102 +1990,96 @@ function SettingsTab() {
   ];
 
   return (
-    <div style={{ padding: 24, maxWidth: 640 }}>
-      <div style={{ marginBottom: 24 }}>
+    <div style={{ padding: 24, maxWidth: 720, display: "flex", flexDirection: "column", gap: 24 }}>
+      <div>
         <h2 style={{ fontSize: 18, fontWeight: 700 }}>Settings & Configuration</h2>
         <p style={{ fontSize: 13, color: "var(--muted)", marginTop: 4 }}>
-          Environment status and deployment references.
+          Configure your AI chatbot behaviour and view deployment info.
         </p>
       </div>
 
-      {/* Public config */}
-      <div className="glass" style={{ padding: 20, marginBottom: 20 }}>
-        <h3 style={{ fontSize: 14, fontWeight: 600, marginBottom: 14 }}>
-          Supabase Connection
-        </h3>
-        {configs.map((c) => (
-          <div
-            key={c.label}
-            style={{
-              display: "flex",
-              justifyContent: "space-between",
-              alignItems: "center",
-              padding: "10px 0",
-              borderBottom: "1px solid var(--border)",
-            }}
-          >
-            <span style={{ fontSize: 13, color: "var(--muted)" }}>{c.label}</span>
-            <span
-              style={{
-                fontSize: 13,
-                color: c.ok ? "#34d399" : "#f87171",
-                fontFamily: "monospace",
-                maxWidth: 300,
-                overflow: "hidden",
-                textOverflow: "ellipsis",
-                whiteSpace: "nowrap",
-              }}
-            >
-              {c.value}
-            </span>
-          </div>
-        ))}
-      </div>
-
-      {/* Server-side env */}
-      <div className="glass" style={{ padding: 20, marginBottom: 20 }}>
-        <h3 style={{ fontSize: 14, fontWeight: 600, marginBottom: 6 }}>
-          Required Server-side Variables
-        </h3>
-        <p style={{ fontSize: 12, color: "var(--muted)", marginBottom: 14 }}>
-          Set these in your Vercel project environment variables or{" "}
-          <code style={{ fontFamily: "monospace" }}>.env.local</code> for local
-          development.
-        </p>
-        {envVars.map((v) => (
-          <div
-            key={v}
-            style={{
-              padding: "8px 0",
-              borderBottom: "1px solid var(--border)",
-              fontFamily: "monospace",
-              fontSize: 13,
-              color: "#a78bfa",
-            }}
-          >
-            {v}
-          </div>
-        ))}
-      </div>
-
-      {/* Webhook URL */}
+      {/* ── AI System Prompt ── */}
       <div className="glass" style={{ padding: 20 }}>
-        <h3 style={{ fontSize: 14, fontWeight: 600, marginBottom: 10 }}>
-          Webhook URL
+        <h3 style={{ fontSize: 15, fontWeight: 700, marginBottom: 6, display: "flex", alignItems: "center", gap: 8 }}>
+          <span>⚡</span> AI System Prompt
         </h3>
-        <p style={{ fontSize: 12, color: "var(--muted)", marginBottom: 10 }}>
-          Configure this URL in your Meta App &rarr; Webhooks settings for the{" "}
-          <strong>Instagram</strong> object:
+        <p style={{ fontSize: 12, color: "var(--muted)", marginBottom: 14, lineHeight: 1.6 }}>
+          This is the instruction set your AI uses when auto-replying to Instagram DMs.
+          Write it like a chatbot briefing — include your business name, what you sell, how to respond to common questions,
+          your tone of voice, and anything else the AI should know.
         </p>
-        <div
-          style={{
-            padding: "10px 14px",
-            borderRadius: 8,
-            background: "var(--surface2)",
-            fontFamily: "monospace",
-            fontSize: 13,
-            color: "#60a5fa",
-            wordBreak: "break-all",
-          }}
-        >
-          {typeof window !== "undefined"
-            ? `${window.location.origin}/api/webhook`
-            : "https://your-domain.com/api/webhook"}
+        {loadingPrompt ? (
+          <div className="pulse" style={{ height: 200, borderRadius: 10, background: "var(--surface2)" }} />
+        ) : (
+          <>
+            <textarea
+              className="textarea"
+              rows={10}
+              value={systemPrompt}
+              onChange={(e) => setSystemPrompt(e.target.value)}
+              placeholder={`You are a helpful assistant for [Your Business Name].\n\nAbout us:\n- We sell [products/services]\n- Our website is [URL]\n\nWhen someone asks about pricing, say: [answer]\nWhen someone wants to buy, say: [answer]\n\nAlways be friendly, concise, and end with a question to keep the conversation going.`}
+              style={{ fontFamily: "monospace", fontSize: 13, resize: "vertical" }}
+            />
+            <div style={{ display: "flex", justifyContent: "space-between", alignItems: "center", marginTop: 12 }}>
+              <div style={{ fontSize: 12, color: "var(--muted)" }}>
+                {systemPrompt.length} characters
+              </div>
+              <button
+                className="btn-primary"
+                onClick={handleSavePrompt}
+                disabled={saving}
+                style={{ minWidth: 120 }}
+              >
+                {saving ? <Spinner /> : "Save Prompt"}
+              </button>
+            </div>
+            {saveMsg && (
+              <div style={{
+                marginTop: 10,
+                padding: "8px 12px",
+                borderRadius: 8,
+                background: saveMsg.startsWith("Error") ? "rgba(248,113,113,0.1)" : "rgba(52,211,153,0.1)",
+                color: saveMsg.startsWith("Error") ? "#f87171" : "#34d399",
+                fontSize: 12,
+              }}>
+                {saveMsg}
+              </div>
+            )}
+          </>
+        )}
+      </div>
+
+      {/* ── Connection Status ── */}
+      <div className="glass" style={{ padding: 20 }}>
+        <h3 style={{ fontSize: 14, fontWeight: 600, marginBottom: 14 }}>Supabase Connection</h3>
+        {[
+          { label: "Supabase URL", value: supabaseUrl ?? "Not configured", ok: !!supabaseUrl },
+          { label: "Supabase Anon Key", value: hasAnonKey ? "✓ Configured" : "Not configured", ok: hasAnonKey },
+        ].map((c) => (
+          <div key={c.label} style={{ display: "flex", justifyContent: "space-between", alignItems: "center", padding: "10px 0", borderBottom: "1px solid var(--border)" }}>
+            <span style={{ fontSize: 13, color: "var(--muted)" }}>{c.label}</span>
+            <span style={{ fontSize: 13, color: c.ok ? "#34d399" : "#f87171", fontFamily: "monospace" }}>{c.value}</span>
+          </div>
+        ))}
+      </div>
+
+      {/* ── Server-side env vars ── */}
+      <div className="glass" style={{ padding: 20 }}>
+        <h3 style={{ fontSize: 14, fontWeight: 600, marginBottom: 6 }}>Required Server-side Variables</h3>
+        <p style={{ fontSize: 12, color: "var(--muted)", marginBottom: 14 }}>Set these in Vercel Environment Variables.</p>
+        {envVars.map((v) => (
+          <div key={v} style={{ padding: "8px 0", borderBottom: "1px solid var(--border)", fontFamily: "monospace", fontSize: 13, color: "#a78bfa" }}>{v}</div>
+        ))}
+      </div>
+
+      {/* ── Webhook URL ── */}
+      <div className="glass" style={{ padding: 20 }}>
+        <h3 style={{ fontSize: 14, fontWeight: 600, marginBottom: 10 }}>Webhook URL</h3>
+        <div style={{ padding: "10px 14px", borderRadius: 8, background: "var(--surface2)", fontFamily: "monospace", fontSize: 13, color: "#60a5fa", wordBreak: "break-all" }}>
+          {typeof window !== "undefined" ? `${window.location.origin}/api/webhook` : "https://your-domain.com/api/webhook"}
         </div>
         <p style={{ fontSize: 12, color: "var(--muted)", marginTop: 10 }}>
-          Subscribe to <strong>messages</strong> and <strong>comments</strong>{" "}
-          fields. Set <code>INSTAGRAM_VERIFY_TOKEN</code> to match what you put
-          in Meta dashboard.
+          Subscribe to <strong>messages</strong> and <strong>comments</strong> fields. Set <code>INSTAGRAM_VERIFY_TOKEN</code> to match what you put in Meta dashboard.
         </p>
       </div>
     </div>

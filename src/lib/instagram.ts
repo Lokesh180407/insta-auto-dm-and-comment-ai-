@@ -145,7 +145,17 @@ export async function fetchInstagramProfile(igsid: string): Promise<InstagramPro
 // ─── Send DM to a user ───────────────────────────────────────────────────────
 export async function sendInstagramMessage(recipientIgsid: string, text: string) {
   const tok = pageToken();
-  const url = new URL(`${graphBase()}/me/messages`);
+  
+  // Use Business Account ID instead of 'me' — avoids "Object with ID 'me' does not exist" error
+  let senderId: string;
+  try {
+    senderId = await getInstagramBusinessAccountId(tok);
+  } catch {
+    // Fallback to 'me' if business ID not resolvable
+    senderId = "me";
+  }
+
+  const url = new URL(`${graphBase()}/${senderId}/messages`);
   url.searchParams.set("access_token", tok);
 
   const res = await fetch(url.toString(), {

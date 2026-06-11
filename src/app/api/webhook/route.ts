@@ -295,12 +295,26 @@ async function handleDMEvent({
     console.error("[DM Handler] Error fetching message history:", historyErr);
   }
 
+  // Load custom system prompt from DB (set via Settings tab)
+  let customSystemPrompt: string | null = null;
+  try {
+    const { data: settingRow } = await supabase
+      .from("app_settings")
+      .select("value")
+      .eq("key", "system_prompt")
+      .maybeSingle();
+    customSystemPrompt = settingRow?.value ?? null;
+  } catch {
+    console.warn("[DM Handler] Could not fetch custom system prompt, using default.");
+  }
+
   console.log("[DM Handler] Requesting response from AI engine.");
   const aiResponse = await getAIResponse(
     (history ?? []).map((m) => ({
       role: m.role as "user" | "assistant",
       content: m.content,
-    }))
+    })),
+    customSystemPrompt
   );
   console.log(`[DM Handler] AI engine responded: "${aiResponse}"`);
 

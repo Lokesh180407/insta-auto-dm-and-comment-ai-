@@ -15,10 +15,13 @@ const FALLBACK_MODELS = [
 ].filter(Boolean) as string[];
 
 export async function getAIResponse(
-  messages: { role: "user" | "assistant"; content: string }[]
+  messages: { role: "user" | "assistant"; content: string }[],
+  customSystemPrompt?: string | null
 ) {
+  const systemPrompt = customSystemPrompt?.trim() || INSTAGRAM_SYSTEM_PROMPT;
+  
   const payload = [
-    { role: "system" as const, content: INSTAGRAM_SYSTEM_PROMPT },
+    { role: "system" as const, content: systemPrompt },
     ...messages,
   ];
 
@@ -36,3 +39,4 @@ export async function getAIResponse(
 
   return "Sorry, I'm temporarily unavailable. Please try again shortly.";
 }
+
