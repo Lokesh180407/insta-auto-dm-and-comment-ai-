@@ -1937,6 +1937,24 @@ function SettingsTab() {
 // ═════════════════════════════════════════════════════════════════════════════
 export default function Dashboard() {
   const [activeTab, setActiveTab] = useState<Tab>("inbox");
+  const [account, setAccount] = useState<{
+    id: string;
+    name: string;
+    username: string;
+    profile_picture_url: string;
+    followers_count: number;
+  } | null>(null);
+
+  useEffect(() => {
+    fetch("/api/instagram/account")
+      .then((res) => res.json())
+      .then((res) => {
+        if (res.success && res.data) {
+          setAccount(res.data);
+        }
+      })
+      .catch((err) => console.error("Error fetching account info:", err));
+  }, []);
 
   const tabs: { id: Tab; label: string; icon: React.ReactNode }[] = [
     { id: "inbox", label: "Inbox", icon: <ChatIcon /> },
@@ -2009,6 +2027,97 @@ export default function Dashboard() {
             </div>
           </div>
         </div>
+
+        {/* Connected Instagram Account Card */}
+        {account ? (
+          <div
+            style={{
+              padding: "12px 14px",
+              margin: "12px 10px 6px",
+              borderRadius: 12,
+              background: "rgba(255, 255, 255, 0.03)",
+              border: "1px solid var(--border)",
+              display: "flex",
+              alignItems: "center",
+              gap: 10,
+            }}
+          >
+            {account.profile_picture_url ? (
+              // eslint-disable-next-line @next/next/no-img-element
+              <img
+                src={account.profile_picture_url}
+                alt={account.username}
+                style={{
+                  width: 36,
+                  height: 36,
+                  borderRadius: "50%",
+                  border: "2px solid #c084fc",
+                  objectFit: "cover",
+                }}
+              />
+            ) : (
+              <div
+                style={{
+                  width: 36,
+                  height: 36,
+                  borderRadius: "50%",
+                  background: "var(--insta-grad)",
+                  display: "flex",
+                  alignItems: "center",
+                  justifyContent: "center",
+                  fontSize: 14,
+                  fontWeight: 700,
+                  color: "#fff",
+                }}
+              >
+                {account.username?.charAt(0).toUpperCase()}
+              </div>
+            )}
+            <div style={{ minWidth: 0, flex: 1 }}>
+              <p
+                style={{
+                  fontSize: 12,
+                  fontWeight: 600,
+                  color: "var(--text)",
+                  overflow: "hidden",
+                  textOverflow: "ellipsis",
+                  whiteSpace: "nowrap",
+                  margin: 0,
+                }}
+              >
+                {account.name || account.username}
+              </p>
+              <p
+                style={{
+                  fontSize: 10,
+                  color: "#a78bfa",
+                  overflow: "hidden",
+                  textOverflow: "ellipsis",
+                  whiteSpace: "nowrap",
+                  fontWeight: 500,
+                  margin: 0,
+                }}
+              >
+                @{account.username}
+              </p>
+            </div>
+          </div>
+        ) : (
+          <div
+            style={{
+              padding: "10px 14px",
+              margin: "12px 10px 6px",
+              borderRadius: 12,
+              background: "rgba(255, 255, 255, 0.01)",
+              border: "1px dashed var(--border)",
+              fontSize: 11,
+              color: "var(--muted)",
+              textAlign: "center",
+            }}
+          >
+            Loading connected account...
+          </div>
+        )}
 
         {/* Nav */}
         <nav style={{ flex: 1, padding: "10px 10px 0" }}>

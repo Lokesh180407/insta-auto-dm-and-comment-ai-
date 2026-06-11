@@ -1,5 +1,5 @@
 import { NextResponse } from "next/server";
-import { getUserMedia } from "@/lib/instagram";
+import { getAccountInfo } from "@/lib/instagram";
 
 export const runtime = "nodejs";
 export const dynamic = "force-dynamic";
@@ -13,11 +13,11 @@ export async function GET() {
     );
   }
   try {
-    const posts = await getUserMedia(token, 30);
-    return NextResponse.json({ success: true, data: posts, count: posts.length });
+    const account = await getAccountInfo(token);
+    return NextResponse.json({ success: true, data: account });
   } catch (err) {
-    const msg = err instanceof Error ? err.message : "Failed to fetch posts";
-    console.error("[/api/instagram/posts]", msg);
+    const msg = err instanceof Error ? err.message : "Failed to load account";
+    console.error("[/api/instagram/account]", msg);
     return NextResponse.json({ success: false, error: msg }, { status: 500 });
   }
 }
