@@ -1,7 +1,7 @@
 import { headers } from "next/headers";
 import Link from "next/link";
 import { getSupabase } from "@/lib/supabase";
-import { getInstagramBusinessAccountId, fetchInstagramBusinessProfile } from "@/lib/instagram";
+import { getInstagramBusinessAccountId, getAccountInfo } from "@/lib/instagram";
 
 export const dynamic = "force-dynamic";
 
@@ -62,19 +62,22 @@ export default async function DebugPage() {
         .from("instagram_conversations")
         .select("*")
         .order("updated_at", { ascending: false })
-        .limit(5);
+        .limit(10);
       recentConversations = convos ?? [];
 
-      // Fetch messages
-      const { data: msgs } = await supabase
-        .from("instagram_messages")
-        .select("*, instagram_conversations(username)")
-        .order("created_at", { ascending: false })
-        .limit(5);
-      recentMessages = msgs ?? [];
+      if (convos && convos.length > 0) {
+        // Fetch messages for the first active conversation
+        const { data: msgs } = await supabase
+          .from("instagram_messages")
+          .select("*")
+          .eq("conversation_id", convos[0].id)
+          .order("created_at", { ascending: false })
+          .limit(10);
+        recentMessages = msgs ?? [];
+      }
     }
   } catch (err: any) {
-    dbStatus = `Error: ${err.message}`;
+    dbStatus = `Exception: ${err.message}`;
   }
 
   // 3. Test Instagram Connectivity & Fetch User's Account (Satisfying "when i opens show my account")
@@ -87,7 +90,7 @@ export default async function DebugPage() {
   if (token) {
     try {
       const bizId = await getInstagramBusinessAccountId(token);
-      const profile = await fetchInstagramBusinessProfile(token, bizId);
+      const profile = await getAccountInfo(token);
       instaStatus = `Connected (Business ID: ${bizId})`;
       instaAccountName = profile.name ?? "No Name";
       instaAccountUsername = profile.username ?? "";
