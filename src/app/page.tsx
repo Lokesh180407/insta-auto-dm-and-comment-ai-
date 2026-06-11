@@ -595,9 +595,16 @@ function InboxTab() {
   const selected = conversations.find((c) => c.id === selectedId);
 
   const fetchConversations = useCallback(async () => {
-    const res = await fetch("/api/conversations");
-    const data = await res.json();
-    if (Array.isArray(data)) setConversations(data);
+    try {
+      const res = await fetch("/api/conversations");
+      if (!res.ok) return;
+      const text = await res.text();
+      if (!text) return;
+      const data = JSON.parse(text);
+      if (Array.isArray(data)) setConversations(data);
+    } catch (e) {
+      console.error("[Inbox] fetchConversations error:", e);
+    }
   }, []);
 
   const selectedIdRef = useRef<string | null>(null);
@@ -606,9 +613,16 @@ function InboxTab() {
   }, [selectedId]);
 
   const fetchMessages = useCallback(async (id: string) => {
-    const res = await fetch(`/api/conversations/${id}/messages`);
-    const data = await res.json();
-    if (Array.isArray(data)) setMessages(data);
+    try {
+      const res = await fetch(`/api/conversations/${id}/messages`);
+      if (!res.ok) return;
+      const text = await res.text();
+      if (!text) return;
+      const data = JSON.parse(text);
+      if (Array.isArray(data)) setMessages(data);
+    } catch (e) {
+      console.error("[Inbox] fetchMessages error:", e);
+    }
   }, []);
 
   useEffect(() => {
@@ -662,11 +676,20 @@ function InboxTab() {
   async function toggleMode() {
     if (!selected) return;
     const newMode = selected.mode === "agent" ? "human" : "agent";
-    await fetch(`/api/conversations/${selected.id}`, {
-      method: "PATCH",
-      headers: { "Content-Type": "application/json" },
-      body: JSON.stringify({ mode: newMode }),
-    });
+    try {
+      const res = await fetch(`/api/conversations/${selected.id}`, {
+        method: "PATCH",
+        headers: { "Content-Type": "application/json" },
+        body: JSON.stringify({ mode: newMode }),
+      });
+      if (!res.ok) {
+        console.error("[Inbox] toggleMode failed:", await res.text());
+        return;
+      }
+    } catch (e) {
+      console.error("[Inbox] toggleMode error:", e);
+      return;
+    }
     setConversations((prev) =>
       prev.map((c) => (c.id === selected.id ? { ...c, mode: newMode } : c))
     );
@@ -777,6 +800,7 @@ function InboxTab() {
                   size={40}
                 />
                 <div style={{ flex: 1, minWidth: 0 }}>
+                  {/* Name row */}
                   <div
                     style={{
                       display: "flex",
@@ -801,6 +825,7 @@ function InboxTab() {
                       {ft(convo.updated_at)}
                     </span>
                   </div>
+                  {/* Username + IGSID row */}
                   <div
                     style={{
                       display: "flex",
@@ -816,12 +841,10 @@ function InboxTab() {
                         whiteSpace: "nowrap",
                         overflow: "hidden",
                         textOverflow: "ellipsis",
-                        maxWidth: 130,
+                        maxWidth: 150,
                       }}
                     >
-                      {convo.username
-                        ? `@${convo.username}`
-                        : convo.last_message ?? ""}
+                      {convo.username ? `@${convo.username}` : convo.last_message ?? ""}
                     </span>
                     <span
                       className={
@@ -830,6 +853,10 @@ function InboxTab() {
                     >
                       {convo.mode === "agent" ? "AI" : "You"}
                     </span>
+                  </div>
+                  {/* Instagram ID */}
+                  <div style={{ fontSize: 10, color: "rgba(148,163,184,0.5)", marginTop: 2, fontFamily: "monospace" }}>
+                    ID: {convo.igsid}
                   </div>
                 </div>
               </button>
@@ -893,27 +920,50 @@ function InboxTab() {
                   size={44}
                 />
                 <div>
-                  <div style={{ display: "flex", alignItems: "center", gap: 6 }}>
+                  <div style={{ display: "flex", alignItems: "center", gap: 8, flexWrap: "wrap" }}>
                     <span style={{ fontSize: 16, fontWeight: 700, letterSpacing: "-0.2px" }}>
-                      {selected.name ?? selected.username ?? selected.igsid}
+                      {selected.name ?? selected.username ?? "Instagram User"}
                     </span>
+                    {selected.username && (
+                      <span style={{ fontSize: 12, color: "#3797f0", fontWeight: 600 }}>@{selected.username}</span>
+                    )}
                   </div>
-                  {selected.username && (
-                    <div style={{ fontSize: 12, color: "var(--muted)", marginTop: 2 }}>
-                      @{selected.username}
-                    </div>
-                  )}
+                  <div style={{ display: "flex", alignItems: "center", gap: 8, marginTop: 3, flexWrap: "wrap" }}>
+                    <span style={{ fontSize: 11, color: "rgba(148,163,184,0.6)", fontFamily: "monospace" }}>
+                      ID: {selected.igsid}
+                    </span>
+                    {selected.follower_count != null && (
+                      <span style={{ fontSize: 11, color: "var(--muted)" }}>
+                        · <strong style={{ color: "var(--text)" }}>{selected.follower_count.toLocaleString()}</strong> followers
+                      </span>
+                    )}
+                    {selected.is_user_follow_business != null && (
+                      <span style={{
+                        fontSize: 10, padding: "1px 6px", borderRadius: 99,
+                        background: selected.is_user_follow_business ? "rgba(55,151,240,.15)" : "rgba(255,255,255,.06)",
+                        color: selected.is_user_follow_business ? "#3797f0" : "var(--muted)",
+                      }}>
+                        {selected.is_user_follow_business ? "Follows you" : "Doesn't follow"}
+                      </span>
+                    )}
+                  </div>
                 </div>
               </div>
-              <div style={{ display: "flex", alignItems: "center", gap: 10 }}>
-                <span style={{ fontSize: 12, fontWeight: 500, color: "var(--muted)" }}>
-                  {selected.mode === "agent" ? "AI Auto-Reply" : "Manual Reply"}
-                </span>
+              {/* AI Toggle — right side */}
+              <div style={{ display: "flex", alignItems: "center", gap: 10, flexShrink: 0 }}>
+                <div style={{ textAlign: "right" }}>
+                  <div style={{ fontSize: 12, fontWeight: 600, color: selected.mode === "agent" ? "#3797f0" : "var(--muted)" }}>
+                    {selected.mode === "agent" ? "⚡ AI Auto-Reply" : "👤 Manual"}
+                  </div>
+                  <div style={{ fontSize: 10, color: "var(--muted)", marginTop: 1 }}>
+                    {selected.mode === "agent" ? "AI is handling replies" : "You are replying"}
+                  </div>
+                </div>
                 <button
                   type="button"
                   className={`toggle ${selected.mode === "agent" ? "on" : ""}`}
                   onClick={toggleMode}
-                  title="Toggle AI Agent Auto-Reply"
+                  title="Toggle AI Auto-Reply"
                 />
               </div>
             </div>

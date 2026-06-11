@@ -26,7 +26,12 @@ export async function POST(
   }
 
   // Send via Instagram
-  await sendInstagramMessage(conversation.igsid, message);
+  try {
+    await sendInstagramMessage(conversation.igsid, message);
+  } catch (err: any) {
+    console.error("[Send API] Error sending to Instagram:", err.message);
+    return Response.json({ error: err.message }, { status: 500 });
+  }
 
   // Store in DB
   const { data: msg, error: msgError } = await supabase
