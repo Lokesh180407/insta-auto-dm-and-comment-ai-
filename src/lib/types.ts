@@ -33,6 +33,7 @@ export type DmStatus =
   | "PENDING"
   | "SENT"
   | "FAILED"
+  | "RETRYING"
   | "SKIPPED_DEDUP"
   | "SKIPPED_RATE_LIMIT"
   | "SKIPPED_PLAN_LIMIT"

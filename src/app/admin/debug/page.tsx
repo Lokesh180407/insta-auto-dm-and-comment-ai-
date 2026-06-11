@@ -2,6 +2,7 @@ import { headers } from "next/headers";
 import Link from "next/link";
 import { getSupabase } from "@/lib/supabase";
 import { getInstagramBusinessAccountId, getAccountInfo } from "@/lib/instagram";
+import DebugClient from "./DebugClient";
 
 export const dynamic = "force-dynamic";
 
@@ -37,6 +38,8 @@ export default async function DebugPage() {
   let recentLogs: any[] = [];
   let recentConversations: any[] = [];
   let recentMessages: any[] = [];
+  let webhookLastEvent = "None";
+  let failedLogs: any[] = [];
 
   try {
     const { data: testData, error: testErr } = await supabase
@@ -56,6 +59,19 @@ export default async function DebugPage() {
         .order("created_at", { ascending: false })
         .limit(10);
       recentLogs = logs ?? [];
+      failedLogs = recentLogs.filter(l => l.status === "FAILED");
+
+      const { data: latestDiagnostic } = await supabase
+        .from("dm_logs")
+        .select("created_at")
+        .eq("status", "DIAGNOSTIC")
+        .order("created_at", { ascending: false })
+        .limit(1)
+        .maybeSingle();
+      
+      if (latestDiagnostic) {
+        webhookLastEvent = new Date(latestDiagnostic.created_at).toLocaleString();
+      }
 
       // Fetch convos
       const { data: convos } = await supabase
@@ -181,6 +197,8 @@ export default async function DebugPage() {
           </div>
         </div>
 
+        <DebugClient failedLogs={failedLogs} testUserId={recentConversations[0]?.id ?? null} />
+
         {/* Grid Layout */}
         <div style={{ display: "grid", gridTemplateColumns: "repeat(auto-fit, minmax(320px, 1fr))", gap: "2rem", marginBottom: "2rem" }}>
           
@@ -244,6 +262,20 @@ export default async function DebugPage() {
               }}>
                 Endpoint: <code>/api/webhook</code><br />
                 Verify Token: <code>{process.env.INSTAGRAM_VERIFY_TOKEN ?? process.env.VERIFY_TOKEN ?? "UNSET"}</code>
+              </div>
+            </div>
+
+            <div>
+              <strong style={{ display: "block", fontSize: "0.9rem", color: "#94a3b8" }}>Webhook Last Event</strong>
+              <div style={{
+                marginTop: "0.5rem",
+                padding: "0.75rem",
+                backgroundColor: "#0f172a",
+                borderRadius: "6px",
+                fontSize: "0.85rem",
+                color: webhookLastEvent !== "None" ? "#34d399" : "#94a3b8"
+              }}>
+                {webhookLastEvent}
               </div>
             </div>
           </div>

@@ -14,6 +14,7 @@ export async function GET() {
   }
   try {
     const posts = await getUserMedia(token, 30);
+    console.log("Media Count:", posts.length);
     return NextResponse.json({ success: true, data: posts, count: posts.length });
   } catch (err) {
     const msg = err instanceof Error ? err.message : "Failed to fetch posts";

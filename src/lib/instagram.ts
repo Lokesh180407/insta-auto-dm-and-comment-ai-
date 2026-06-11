@@ -23,12 +23,12 @@ export interface InstagramAccountInfo {
 
 export interface InstagramMedia {
   id: string;
-  caption?: string;
+  caption: string;
   media_type: "IMAGE" | "VIDEO" | "CAROUSEL_ALBUM" | string;
-  media_url?: string;
-  thumbnail_url?: string;
+  media_url: string;
+  thumbnail: string | null;
   timestamp: string;
-  permalink?: string;
+  permalink: string;
 }
 
 function graphBase() {
@@ -191,6 +191,18 @@ export async function sendPrivateReply(
   return data;
 }
 
+export function normalizeMedia(post: Record<string, unknown>): InstagramMedia {
+  return {
+    id: post.id as string,
+    caption: (post.caption as string) ?? "",
+    media_type: (post.media_type as string) ?? "IMAGE",
+    media_url: (post.media_url as string) ?? "",
+    thumbnail: (post.thumbnail_url as string) ?? (post.media_url as string) ?? null,
+    timestamp: (post.timestamp as string) ?? "",
+    permalink: (post.permalink as string) ?? "",
+  };
+}
+
 // ─── Get media/posts/reels ───────────────────────────────────────────────────
 export async function getUserMedia(
   accessToken: string,
@@ -215,16 +227,7 @@ export async function getUserMedia(
     throw new Error(data.error.message);
   }
 
-  const items: InstagramMedia[] = (data.data ?? []).map((post: Record<string, unknown>) => ({
-    id: post.id as string,
-    caption: (post.caption as string) ?? "",
-    media_type: (post.media_type as string) ?? "IMAGE",
-    // For VIDEO posts thumbnail_url is the cover; for IMAGE use media_url
-    media_url: (post.media_url as string) ?? "",
-    thumbnail_url: (post.thumbnail_url as string) ?? (post.media_url as string) ?? "",
-    timestamp: (post.timestamp as string) ?? "",
-    permalink: (post.permalink as string) ?? "",
-  }));
+  const items: InstagramMedia[] = (data.data ?? []).map(normalizeMedia);
 
   return items;
 }

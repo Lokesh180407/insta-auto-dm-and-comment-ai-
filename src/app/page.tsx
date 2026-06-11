@@ -336,11 +336,11 @@ function KeywordInput({
 // ─── Post picker ──────────────────────────────────────────────────────────────
 interface InstagramPost {
   id: string;
-  caption?: string;
+  caption: string;
   media_type: string;
-  media_url?: string;
-  thumbnail_url?: string;
-  permalink?: string;
+  media_url: string;
+  thumbnail: string | null;
+  permalink: string;
   timestamp: string;
 }
 
@@ -440,7 +440,7 @@ function PostPicker({
           }}
         >
           {posts.map((post) => {
-            const thumb = post.thumbnail_url ?? post.media_url;
+            const thumb = post.thumbnail ?? post.media_url;
             const selected = selectedPostId === post.id;
             return (
               <button
@@ -495,7 +495,7 @@ function PostPicker({
                 >
                   <span style={{ fontSize: 14, marginBottom: 2 }}>📷</span>
                   <span style={{ overflow: "hidden", textOverflow: "ellipsis", display: "-webkit-box", WebkitLineClamp: 2, WebkitBoxOrient: "vertical" }}>
-                    {post.caption || `Post ${post.id.slice(-4)}`}
+                    {post.caption ? post.caption.slice(0, 100) : `Post ${post.id.slice(-4)}`}
                   </span>
                 </div>
                 {selected && (
@@ -545,7 +545,7 @@ function PostPicker({
               >
                 <div style={{ display: "flex", flexDirection: "column", gap: 2, flex: 1, minWidth: 0 }}>
                   <span style={{ fontSize: 13, fontWeight: 500, color: "var(--text)", overflow: "hidden", textOverflow: "ellipsis", whiteSpace: "nowrap" }}>
-                    {post.caption || "(No caption)"}
+                    {post.caption ? post.caption.slice(0, 100) : "(No caption)"}
                   </span>
                   <div style={{ display: "flex", gap: 12, fontSize: 10, color: "var(--muted)" }}>
                     <span>ID: {post.id}</span>
@@ -621,8 +621,8 @@ function InboxTab() {
   // Real-time
   useEffect(() => {
     if (!supabase) return;
-    const ch = supabase
-      .channel("inbox-rt")
+    const chMsg = supabase
+      .channel("public:instagram_messages")
       .on(
         "postgres_changes",
         { event: "INSERT", schema: "public", table: "instagram_messages" },
@@ -636,13 +636,21 @@ function InboxTab() {
           fetchConversations();
         }
       )
+      .subscribe();
+
+    const chConv = supabase
+      .channel("public:instagram_conversations")
       .on(
         "postgres_changes",
         { event: "*", schema: "public", table: "instagram_conversations" },
         () => fetchConversations()
       )
       .subscribe();
-    return () => { supabase.removeChannel(ch); };
+
+    return () => { 
+      supabase.removeChannel(chMsg); 
+      supabase.removeChannel(chConv); 
+    };
   }, [selectedId, fetchConversations, supabase]);
 
   async function toggleMode() {
