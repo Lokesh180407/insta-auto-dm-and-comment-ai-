@@ -145,31 +145,45 @@ export async function fetchInstagramProfile(igsid: string): Promise<InstagramPro
 // ─── Send DM to a user ───────────────────────────────────────────────────────
 export async function sendInstagramMessage(recipientIgsid: string, text: string) {
   const tok = pageToken();
-  
-  // Use Business Account ID instead of 'me' — avoids "Object with ID 'me' does not exist" error
-  let senderId: string;
-  try {
-    senderId = await getInstagramBusinessAccountId(tok);
-  } catch {
-    // Fallback to 'me' if business ID not resolvable
-    senderId = "me";
-  }
 
-  const url = new URL(`${graphBase()}/${senderId}/messages`);
+  // Use 'me' because the Messenger API for Instagram requires the Facebook Page ID
+  // to send messages, and 'me' resolves to the Page ID when using a Page Access Token.
+  const url = new URL(`${graphBase()}/me/messages`);
   url.searchParams.set("access_token", tok);
+
+  const payload = {
+    recipient: { id: recipientIgsid },
+    message: { text },
+    messaging_type: "RESPONSE", // Required/Recommended by Meta for standard 24h window replies
+  };
+
+  console.log({
+    endpoint: url.toString().split("?")[0] + "?access_token=...", // Avoid logging full token
+    tokenType: "Page",
+    recipientIgsid,
+    payload,
+  });
 
   const res = await fetch(url.toString(), {
     method: "POST",
     headers: { "Content-Type": "application/json" },
-    body: JSON.stringify({
-      recipient: { id: recipientIgsid },
-      message: { text },
-    }),
+    body: JSON.stringify(payload),
   });
+  
   const data = await res.json();
-  if (data.error) {
-    console.error("[Instagram] sendInstagramMessage error:", data.error);
-    throw new Error(data.error.message);
+  
+  console.log({
+    status: res.status,
+    response: data,
+  });
+  
+  if (!res.ok || data.error) {
+    console.error("[Instagram] sendInstagramMessage failed:");
+    console.error(" - URL:", `${graphBase()}/me/messages`);
+    console.error(" - Payload:", JSON.stringify(payload));
+    console.error(" - HTTP Status:", res.status);
+    console.error(" - Graph API Error:", data.error || data);
+    throw new Error(data.error?.message || "Unknown Meta API Error");
   }
   return data;
 }
@@ -177,26 +191,49 @@ export async function sendInstagramMessage(recipientIgsid: string, text: string)
 // ─── Send Private Reply to a comment (Comment → DM) ─────────────────────────
 export async function sendPrivateReply(
   accessToken: string,
-  instagramAccountId: string,
+  _instagramAccountId: string,
   commentId: string,
   message: string
 ) {
-  const url = `${graphBase()}/${instagramAccountId}/messages`;
+  // We use 'me' here because the Facebook Page ID is required to send private replies,
+  // and using a Page Access Token makes 'me' resolve to the Facebook Page.
+  const url = `${graphBase()}/me/messages`;
+  
+  const payload = {
+    recipient: { comment_id: commentId },
+    message: { text: message },
+  };
+
+  console.log({
+    endpoint: url.toString(),
+    tokenType: "Page",
+    recipientIgsid: "comment_" + commentId,
+    payload,
+  });
+
   const res = await fetch(url, {
     method: "POST",
     headers: {
       "Content-Type": "application/json",
       Authorization: `Bearer ${accessToken}`,
     },
-    body: JSON.stringify({
-      recipient: { comment_id: commentId },
-      message: { text: message },
-    }),
+    body: JSON.stringify(payload),
   });
+  
   const data = await res.json();
-  if (data.error) {
-    console.error("[Instagram] sendPrivateReply error:", data.error);
-    throw new Error(data.error.message);
+  
+  console.log({
+    status: res.status,
+    response: data,
+  });
+  
+  if (!res.ok || data.error) {
+    console.error("[Instagram] sendPrivateReply failed:");
+    console.error(" - URL:", url);
+    console.error(" - Payload:", JSON.stringify(payload));
+    console.error(" - HTTP Status:", res.status);
+    console.error(" - Graph API Error:", data.error || data);
+    throw new Error(data.error?.message || "Unknown Meta API Error");
   }
   return data;
 }
