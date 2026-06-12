@@ -45,6 +45,19 @@ function pageToken() {
 // Strategy 2: Call /me on the Page token -> instagram_business_account
 // Strategy 3: List all pages -> find IG account
 let _cachedBizId: string | null = null;
+let _cachedPageId: string | null = null;
+
+export async function getFacebookPageId(accessToken: string): Promise<string> {
+  if (_cachedPageId) return _cachedPageId;
+  const v = process.env.META_GRAPH_API_VERSION ?? "v21.0";
+  const r = await fetch(`https://graph.facebook.com/${v}/me?fields=id&access_token=${encodeURIComponent(accessToken)}`);
+  const d = await r.json();
+  if (d.id) {
+    _cachedPageId = d.id;
+    return d.id;
+  }
+  throw new Error("Could not resolve Facebook Page ID from token. Is it a valid Page Access Token?");
+}
 
 export async function getInstagramBusinessAccountId(accessToken: string): Promise<string> {
   if (_cachedBizId) return _cachedBizId;
@@ -145,10 +158,12 @@ export async function fetchInstagramProfile(igsid: string): Promise<InstagramPro
 // ─── Send DM to a user ───────────────────────────────────────────────────────
 export async function sendInstagramMessage(recipientIgsid: string, text: string) {
   const tok = pageToken();
+  const pageId = await getFacebookPageId(tok);
 
-  // Use 'me' because the Messenger API for Instagram requires the Facebook Page ID
-  // to send messages, and 'me' resolves to the Page ID when using a Page Access Token.
-  const url = new URL(`${graphBase()}/me/messages`);
+  // Meta Documentation: https://developers.facebook.com/docs/messenger-platform/reference/send-api
+  // Explicitly use /{page-id}/messages to avoid "Object with ID 'me' does not exist" errors
+  // which can happen with certain System User Page Tokens.
+  const url = new URL(`${graphBase()}/${pageId}/messages`);
   url.searchParams.set("access_token", tok);
 
   const payload = {
@@ -195,9 +210,10 @@ export async function sendPrivateReply(
   commentId: string,
   message: string
 ) {
-  // We use 'me' here because the Facebook Page ID is required to send private replies,
-  // and using a Page Access Token makes 'me' resolve to the Facebook Page.
-  const url = `${graphBase()}/me/messages`;
+  const pageId = await getFacebookPageId(accessToken);
+
+  // Explicitly use /{page-id}/messages to avoid "Object with ID 'me' does not exist"
+  const url = `${graphBase()}/${pageId}/messages`;
   
   const payload = {
     recipient: { comment_id: commentId },
