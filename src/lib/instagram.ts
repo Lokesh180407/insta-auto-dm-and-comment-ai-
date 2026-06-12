@@ -47,7 +47,7 @@ function pageToken() {
 let _cachedBizId: string | null = null;
 let _cachedPageId: string | null = null;
 
-export async function resolveInstagramAndPageIds(accessToken: string) {
+export async function resolveInstagramAndPageIds(accessToken: string): Promise<{ pageId: string; igBizId: string; userId: string }> {
   if (_cachedPageId && _cachedBizId) {
     return { pageId: _cachedPageId, igBizId: _cachedBizId, userId: "Cached" };
   }
@@ -62,7 +62,7 @@ export async function resolveInstagramAndPageIds(accessToken: string) {
   if (d1.id && d1.instagram_business_account?.id) {
     _cachedPageId = d1.id;
     _cachedBizId = d1.instagram_business_account.id;
-    return { pageId: _cachedPageId, igBizId: _cachedBizId, userId: facebookUserId };
+    return { pageId: _cachedPageId!, igBizId: _cachedBizId!, userId: facebookUserId };
   }
 
   // If we reach here, /me returned something without an instagram_business_account.
@@ -80,7 +80,7 @@ export async function resolveInstagramAndPageIds(accessToken: string) {
       if (page.instagram_business_account?.id) {
         _cachedPageId = page.id;
         _cachedBizId = page.instagram_business_account.id;
-        return { pageId: _cachedPageId, igBizId: _cachedBizId, userId: facebookUserId };
+        return { pageId: _cachedPageId!, igBizId: _cachedBizId!, userId: facebookUserId };
       }
     }
   }
