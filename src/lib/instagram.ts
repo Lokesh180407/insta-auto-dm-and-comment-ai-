@@ -47,63 +47,57 @@ function pageToken() {
 let _cachedBizId: string | null = null;
 let _cachedPageId: string | null = null;
 
-export async function getFacebookPageId(accessToken: string): Promise<string> {
-  if (_cachedPageId) return _cachedPageId;
-  const v = process.env.META_GRAPH_API_VERSION ?? "v21.0";
-  const r = await fetch(`https://graph.facebook.com/${v}/me?fields=id&access_token=${encodeURIComponent(accessToken)}`);
-  const d = await r.json();
-  if (d.id) {
-    _cachedPageId = d.id;
-    return d.id;
+export async function resolveInstagramAndPageIds(accessToken: string) {
+  if (_cachedPageId && _cachedBizId) {
+    return { pageId: _cachedPageId, igBizId: _cachedBizId, userId: "Cached" };
   }
-  throw new Error("Could not resolve Facebook Page ID from token. Is it a valid Page Access Token?");
+
+  const v = process.env.META_GRAPH_API_VERSION ?? "v24.0";
+  let facebookUserId = "N/A (Token is Page-scoped)";
+
+  // Attempt 1: See if /me is the Page itself (Page Access Token)
+  const r1 = await fetch(`https://graph.facebook.com/${v}/me?fields=id,name,instagram_business_account&access_token=${encodeURIComponent(accessToken)}`);
+  const d1 = await r1.json();
+
+  if (d1.id && d1.instagram_business_account?.id) {
+    _cachedPageId = d1.id;
+    _cachedBizId = d1.instagram_business_account.id;
+    return { pageId: _cachedPageId, igBizId: _cachedBizId, userId: facebookUserId };
+  }
+
+  // If we reach here, /me returned something without an instagram_business_account.
+  // This means the token is likely a User Access Token. We save the User ID for logging.
+  if (d1.id) {
+    facebookUserId = d1.id;
+  }
+
+  // Attempt 2: List the Pages this User manages to find the connected Page
+  const r2 = await fetch(`https://graph.facebook.com/${v}/me/accounts?fields=id,name,instagram_business_account&access_token=${encodeURIComponent(accessToken)}`);
+  const d2 = await r2.json();
+
+  if (d2.data && d2.data.length > 0) {
+    for (const page of d2.data) {
+      if (page.instagram_business_account?.id) {
+        _cachedPageId = page.id;
+        _cachedBizId = page.instagram_business_account.id;
+        return { pageId: _cachedPageId, igBizId: _cachedBizId, userId: facebookUserId };
+      }
+    }
+  }
+
+  throw new Error(
+    "Could not resolve Facebook Page ID. Ensure the token has 'pages_show_list' and 'instagram_basic' permissions."
+  );
+}
+
+export async function getFacebookPageId(accessToken: string): Promise<string> {
+  const ids = await resolveInstagramAndPageIds(accessToken);
+  return ids.pageId;
 }
 
 export async function getInstagramBusinessAccountId(accessToken: string): Promise<string> {
-  if (_cachedBizId) return _cachedBizId;
-
-  // Try env var first
-  const envId = process.env.INSTAGRAM_BUSINESS_ACCOUNT_ID;
-  if (envId) {
-    _cachedBizId = envId;
-    return envId;
-  }
-
-  const v = process.env.META_GRAPH_API_VERSION ?? "v21.0";
-
-  // Strategy 1: /me?fields=instagram_business_account (works if token is a Page token)
-  try {
-    const r1 = await fetch(
-      `https://graph.facebook.com/${v}/me?fields=instagram_business_account,id,name&access_token=${encodeURIComponent(accessToken)}`
-    );
-    const d1 = await r1.json();
-    if (d1.instagram_business_account?.id) {
-      _cachedBizId = d1.instagram_business_account.id;
-      return _cachedBizId!;
-    }
-  } catch {}
-
-  // Strategy 2: /me/accounts -> for each page -> get instagram_business_account
-  try {
-    const r2 = await fetch(
-      `https://graph.facebook.com/${v}/me/accounts?fields=instagram_business_account,id,name&access_token=${encodeURIComponent(accessToken)}`
-    );
-    const d2 = await r2.json();
-    if (d2.data && d2.data.length > 0) {
-      for (const page of d2.data) {
-        if (page.instagram_business_account?.id) {
-          _cachedBizId = page.instagram_business_account.id;
-          return _cachedBizId!;
-        }
-      }
-    }
-  } catch {}
-
-  throw new Error(
-    "Could not resolve Instagram Business Account ID. " +
-    "Make sure your Page token has instagram_basic + pages_show_list scopes, " +
-    "or set INSTAGRAM_BUSINESS_ACCOUNT_ID in your environment variables."
-  );
+  const ids = await resolveInstagramAndPageIds(accessToken);
+  return ids.igBizId;
 }
 
 // ─── Get connected Instagram account info (for header/sidebar display) ────────
@@ -158,12 +152,12 @@ export async function fetchInstagramProfile(igsid: string): Promise<InstagramPro
 // ─── Send DM to a user ───────────────────────────────────────────────────────
 export async function sendInstagramMessage(recipientIgsid: string, text: string) {
   const tok = pageToken();
-  const pageId = await getFacebookPageId(tok);
+  const ids = await resolveInstagramAndPageIds(tok);
 
   // Meta Documentation: https://developers.facebook.com/docs/messenger-platform/reference/send-api
   // Explicitly use /{page-id}/messages to avoid "Object with ID 'me' does not exist" errors
   // which can happen with certain System User Page Tokens.
-  const url = new URL(`${graphBase()}/${pageId}/messages`);
+  const url = new URL(`${graphBase()}/${ids.pageId}/messages`);
   url.searchParams.set("access_token", tok);
 
   const payload = {
@@ -172,10 +166,14 @@ export async function sendInstagramMessage(recipientIgsid: string, text: string)
     messaging_type: "RESPONSE", // Required/Recommended by Meta for standard 24h window replies
   };
 
+  const endpointStr = url.toString().split("?")[0] + "?access_token=...";
+
   console.log({
-    endpoint: url.toString().split("?")[0] + "?access_token=...", // Avoid logging full token
-    tokenType: "Page",
-    recipientIgsid,
+    message: "Initiating Send Message",
+    facebookUserId: ids.userId,
+    facebookPageId: ids.pageId,
+    instagramAccountId: ids.igBizId,
+    endpoint: endpointStr,
     payload,
   });
 
@@ -210,20 +208,24 @@ export async function sendPrivateReply(
   commentId: string,
   message: string
 ) {
-  const pageId = await getFacebookPageId(accessToken);
+  const ids = await resolveInstagramAndPageIds(accessToken);
 
   // Explicitly use /{page-id}/messages to avoid "Object with ID 'me' does not exist"
-  const url = `${graphBase()}/${pageId}/messages`;
+  const url = `${graphBase()}/${ids.pageId}/messages`;
   
   const payload = {
     recipient: { comment_id: commentId },
     message: { text: message },
   };
 
+  const endpointStr = url + "?access_token=...";
+
   console.log({
-    endpoint: url.toString(),
-    tokenType: "Page",
-    recipientIgsid: "comment_" + commentId,
+    message: "Initiating Private Reply",
+    facebookUserId: ids.userId,
+    facebookPageId: ids.pageId,
+    instagramAccountId: ids.igBizId,
+    endpoint: endpointStr,
     payload,
   });
 
