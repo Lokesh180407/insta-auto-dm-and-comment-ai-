@@ -85,8 +85,12 @@ export async function resolveInstagramAndPageIds(accessToken: string): Promise<{
     }
   }
 
+  console.error("[Instagram ID Resolution Failed] Meta Graph API Responses:");
+  console.error(" - /me response:", JSON.stringify(d1));
+  console.error(" - /me/accounts response:", JSON.stringify(d2));
+
   throw new Error(
-    "Could not resolve Facebook Page ID. Ensure the token has 'pages_show_list' and 'instagram_basic' permissions."
+    "Could not resolve Facebook Page ID. Check Vercel logs above for the exact Meta Graph API error."
   );
 }
 
