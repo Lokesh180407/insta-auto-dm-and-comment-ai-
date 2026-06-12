@@ -153,8 +153,28 @@ export async function fetchInstagramProfile(igsid: string): Promise<InstagramPro
   };
 }
 
+import { supabase } from "@/lib/supabase";
+
 // ─── Send DM to a user ───────────────────────────────────────────────────────
 export async function sendInstagramMessage(recipientIgsid: string, text: string) {
+  // Check 24-hour window first
+  const { data: conversation } = await supabase
+    .from("instagram_conversations")
+    .select("can_reply_until, is_active")
+    .eq("igsid", recipientIgsid)
+    .single();
+
+  if (conversation) {
+    if (!conversation.is_active) {
+      console.warn(`[Instagram] Aborting send to ${recipientIgsid}: Conversation is inactive.`);
+      throw new Error("Cannot send message: Conversation is inactive.");
+    }
+    if (conversation.can_reply_until && new Date() > new Date(conversation.can_reply_until)) {
+      console.warn(`[Instagram] Aborting send to ${recipientIgsid}: 24-hour reply window expired.`);
+      throw new Error("Cannot send message: 24-hour reply window has expired.");
+    }
+  }
+
   const tok = pageToken();
   const ids = await resolveInstagramAndPageIds(tok);
 

@@ -28,6 +28,7 @@ interface Conversation {
   is_user_follow_business?: boolean | null;
   assigned_to?: string | null;
   closed?: boolean;
+  can_reply_until?: string | null;
 }
 
 interface Message {
@@ -160,6 +161,26 @@ export default function InboxPage() {
 
   const messagesEndRef = useRef<HTMLDivElement>(null);
   const selectedIdRef = useRef<string | null>(null);
+
+  const [now, setNow] = useState(new Date());
+  useEffect(() => {
+    const timer = setInterval(() => setNow(new Date()), 60000);
+    return () => clearInterval(timer);
+  }, []);
+
+  const canReply = useMemo(() => {
+    if (!selected?.can_reply_until) return true;
+    return new Date(selected.can_reply_until) > now;
+  }, [selected, now]);
+
+  const timeLeft = useMemo(() => {
+    if (!selected?.can_reply_until) return null;
+    const diff = new Date(selected.can_reply_until).getTime() - now.getTime();
+    if (diff <= 0) return 'Expired';
+    const hours = Math.floor(diff / (1000 * 60 * 60));
+    const mins = Math.floor((diff % (1000 * 60 * 60)) / (1000 * 60));
+    return `${hours}h ${mins}m left`;
+  }, [selected, now]);
 
   useEffect(() => {
     selectedIdRef.current = selectedId;
@@ -507,22 +528,28 @@ export default function InboxPage() {
 
             {/* Input Bar */}
             <div style={{ padding: '16px 20px', borderTop: '1px solid rgba(255,255,255,0.07)', background: '#111118' }}>
+              <div style={{ display: 'flex', justifyContent: 'space-between', marginBottom: 8, fontSize: 11 }}>
+                <span style={{ color: canReply ? '#22c55e' : '#ef4444', fontWeight: 600 }}>
+                  {canReply ? `✅ Can reply (${timeLeft || 'Active'})` : '⏰ Cannot reply (24hr window expired)'}
+                </span>
+              </div>
               <div style={{ display: 'flex', alignItems: 'center', gap: 10, padding: '8px 12px', background: '#1a1a24', borderRadius: 10, border: '1px solid rgba(255,255,255,0.08)' }}>
                 <input
                   type="text"
                   value={input}
                   onChange={e => setInput(e.target.value)}
                   onKeyDown={e => e.key === 'Enter' && handleSend()}
-                  placeholder="Type your response..."
-                  style={{ flex: 1, background: 'transparent', border: 'none', color: '#fff', fontSize: 13, outline: 'none' }}
+                  placeholder={canReply ? "Type your response..." : "Cannot reply - 24hr window expired"}
+                  disabled={!canReply}
+                  style={{ flex: 1, background: 'transparent', border: 'none', color: '#fff', fontSize: 13, outline: 'none', opacity: canReply ? 1 : 0.5 }}
                 />
                 <button
                   onClick={handleSend}
-                  disabled={sending || !input.trim()}
+                  disabled={sending || !input.trim() || !canReply}
                   style={{
                     width: 32, height: 32, borderRadius: 8, background: 'linear-gradient(135deg, #833ab4, #fd1d1d)',
                     border: 'none', color: '#fff', cursor: 'pointer', display: 'flex', alignItems: 'center', justifyContent: 'center',
-                    opacity: sending || !input.trim() ? 0.4 : 1
+                    opacity: sending || !input.trim() || !canReply ? 0.4 : 1
                   }}
                 >
                   {sending ? <Spinner /> : <SendIcon />}

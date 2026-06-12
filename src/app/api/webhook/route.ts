@@ -220,9 +220,11 @@ async function handleDMEvent({
     const profile = await fetchInstagramProfile(igsid);
     console.log("[DM Handler] Fetched follower profile:", profile);
 
+    const canReplyUntil = new Date(Date.now() + 24 * 60 * 60 * 1000).toISOString();
+
     const { data: newConvo, error: insertConvoErr } = await supabase
       .from("instagram_conversations")
-      .insert({ igsid, ...profile })
+      .insert({ igsid, ...profile, can_reply_until: canReplyUntil, is_active: true })
       .select()
       .single();
 
@@ -234,15 +236,17 @@ async function handleDMEvent({
   } else {
     console.log(`[DM Handler] Active conversation ID: ${conversation.id}. Refreshing profile data.`);
     const profile = await fetchInstagramProfile(igsid);
+    const canReplyUntil = new Date(Date.now() + 24 * 60 * 60 * 1000).toISOString();
+    
     const { error: updateConvoErr } = await supabase
       .from("instagram_conversations")
-      .update(profile)
+      .update({ ...profile, can_reply_until: canReplyUntil, is_active: true })
       .eq("id", conversation.id);
 
     if (updateConvoErr) {
       console.error("[DM Handler] Error updating conversation details:", updateConvoErr);
     }
-    conversation = { ...conversation, ...profile };
+    conversation = { ...conversation, ...profile, can_reply_until: canReplyUntil };
   }
 
   if (!conversation) {
