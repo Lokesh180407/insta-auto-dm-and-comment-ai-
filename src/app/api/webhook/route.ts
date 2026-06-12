@@ -93,17 +93,13 @@ export async function POST(request: NextRequest) {
 
   // Record this webhook event for diagnostic page if possible
   try {
-    await supabase.from("dm_logs").insert({
-      automationId: "00000000-0000-0000-0000-000000000000", // dummy/diagnostic entry
-      commenterId: "system_webhook",
-      commenterName: "system",
-      commentText: `Payload received object: ${body.object}`,
-      commentId: `webhook_${Date.now()}`,
-      status: "DIAGNOSTIC",
-      errorMessage: rawBody.substring(0, 1000)
-    }).select();
+    await supabase.from("webhook_logs").insert({
+      event_type: body.object === "instagram" ? "instagram_webhook" : "unknown",
+      payload: body,
+      processed: false
+    });
   } catch (dbErr) {
-    // Ignore key errors for dummy logger
+    // Ignore errors for logger
   }
 
   if (body.object !== "instagram") {
@@ -319,8 +315,17 @@ async function handleDMEvent({
   console.log(`[DM Handler] AI engine responded: "${aiResponse}"`);
 
   console.log("[DM Handler] Dispatching message payload to Instagram Business API.");
-  const sendResult = await sendInstagramMessage(igsid, aiResponse);
-  console.log("[DM Handler] Instagram Send API result:", sendResult);
+  try {
+    const sendResult = await sendInstagramMessage(igsid, aiResponse);
+    console.log("[DM Handler] Instagram Send API result:", sendResult);
+  } catch (sendErr: unknown) {
+    console.error("[DM Handler] Failed to send via API, pushing to jobs queue...", sendErr);
+    await supabase.from("jobs").insert({
+      type: "send_dm",
+      payload: { recipient_id: igsid, text: aiResponse },
+      status: "pending"
+    });
+  }
 
   console.log("[DM Handler] Recording AI response message into database.");
   const { error: insertAiErr } = await supabase.from("instagram_messages").insert({
@@ -432,6 +437,14 @@ async function handleCommentEvent({
     console.log(`[Comment Handler] DM message rendered: "${dmMessage}"`);
     console.log(`[Comment Handler] Saving PENDING DM log in database.`);
 
+    // Log comment triggered analytics event
+    await supabase.from("analytics_events").insert({
+      event_type: "comment_triggered",
+      igsid: commenterId,
+      campaign_id: automation.id,
+      metadata: { commentId, matchedKeyword: matchResult.matchedKeyword }
+    });
+
     // Upsert log as PENDING
     const { error: upsertErr } = await supabase.from("dm_logs").upsert(
       {
@@ -488,6 +501,16 @@ async function handleCommentEvent({
       if (updateFailErr) {
         console.error("[Comment Handler] Error saving DM log failure status:", updateFailErr);
       }
+
+      // Push to jobs queue for retry
+      console.log(`[Comment Handler] Pushing failed send to jobs queue for retry...`);
+      await supabase.from("jobs").insert({
+        type: "send_comment_reply",
+        payload: { comment_id: commentId, message: dmMessage },
+        status: "pending",
+        error: message,
+        attempts: 1
+      });
     }
   }
 }
