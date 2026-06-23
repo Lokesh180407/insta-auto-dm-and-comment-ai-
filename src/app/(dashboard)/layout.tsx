@@ -12,17 +12,9 @@ interface NavItem {
 }
 
 const navItems: NavItem[] = [
-  { icon: '💬', label: 'Inbox', route: '/inbox', badge: 3 },
-  { icon: '🤖', label: 'AI Agent', route: '/ai' },
-  { icon: '💬', label: 'Comments', route: '/comments' },
-  { icon: '⚡', label: 'Flows', route: '/flows' },
-  { icon: '📢', label: 'Broadcasts', route: '/broadcasts' },
-  { icon: '🎯', label: 'Campaigns', route: '/campaigns' },
-  { icon: '📊', label: 'Analytics', route: '/analytics' },
-  { icon: '👥', label: 'CRM', route: '/crm' },
-  { icon: '🧠', label: 'Knowledge', route: '/knowledge' },
-  { icon: '👔', label: 'Team', route: '/team' },
-  { icon: '📋', label: 'Logs', route: '/logs' },
+  { icon: '🏠', label: 'Dashboard', route: '/' },
+  { icon: '💬', label: 'Comment → DM', route: '/comments' },
+  { icon: '📋', label: 'DM Logs', route: '/logs' },
   { icon: '⚙️', label: 'Settings', route: '/settings' },
 ];
 
