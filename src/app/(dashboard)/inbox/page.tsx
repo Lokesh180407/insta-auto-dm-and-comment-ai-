@@ -168,6 +168,8 @@ export default function InboxPage() {
     return () => clearInterval(timer);
   }, []);
 
+  const selected = useMemo(() => conversations.find((c) => c.id === selectedId), [conversations, selectedId]);
+
   const canReply = useMemo(() => {
     if (!selected?.can_reply_until) return true;
     return new Date(selected.can_reply_until) > now;
@@ -185,8 +187,6 @@ export default function InboxPage() {
   useEffect(() => {
     selectedIdRef.current = selectedId;
   }, [selectedId]);
-
-  const selected = useMemo(() => conversations.find((c) => c.id === selectedId), [conversations, selectedId]);
 
   const fetchConversations = useCallback(async () => {
     try {
