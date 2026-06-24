@@ -149,20 +149,53 @@ export async function POST(request: NextRequest) {
           instagram_msg_id: instagramMsgId || null,
         });
       }
-    } else {
-      const { data: newConvo } = await supabase
+    let convoId = existing?.id;
+    if (!convoId && text) {
+      const { data: nc } = await supabase
         .from("instagram_conversations")
         .insert({ igsid, can_reply_until: canReplyUntil, is_active: true })
         .select()
         .single();
-
-      if (newConvo && text) {
-        await supabase.from("instagram_messages").insert({
-          conversation_id: newConvo.id,
+      
+      if (nc) {
+         convoId = nc.id;
+         await supabase.from("instagram_messages").insert({
+          conversation_id: nc.id,
           role: "user",
           content: text,
           instagram_msg_id: instagramMsgId || null,
         });
+      }
+    }
+
+    // Process DM replies for gates
+    if (text && convoId) {
+         const { data: cData } = await supabase.from("instagram_conversations").select("campaign_metadata").eq("id", convoId).single();
+         if (cData && cData.campaign_metadata?.state === 'awaiting_email') {
+            const emailRegex = /^[^\s@]+@[^\s@]+\.[^\s@]+$/;
+            if (emailRegex.test(text.trim())) {
+               // Update state
+               await supabase.from("instagram_conversations").update({
+                  campaign_metadata: { state: 'email_captured', email: text.trim(), automation_id: cData.campaign_metadata.automation_id }
+               }).eq("id", convoId);
+               
+               // Queue delivery message job
+               await supabase.from("jobs").insert({
+                  type: "process_gate_success",
+                  payload: { igsid, automation_id: cData.campaign_metadata.automation_id },
+                  status: "pending",
+                  attempts: 0
+               });
+            } else {
+               // Ask again
+               await supabase.from("jobs").insert({
+                 type: "send_dm",
+                 payload: { igsid, message: "Please provide a valid email address to continue." },
+                 status: "pending",
+                 attempts: 0
+               });
+            }
+         }
       }
     }
 
@@ -237,6 +270,19 @@ async function handleCommentEvent({
       commenterName,
       trackedLinks: automation.tracked_links ?? [],
     });
+    
+    const config = automation.campaign_config || {};
+
+    // 1. Process Public Reply
+    if (config.public_reply?.enabled && config.public_reply?.message) {
+      // Simulate queuing a public comment reply job
+      await supabase.from("jobs").insert({
+        type: "send_public_reply",
+        payload: { comment_id: commentId, message: config.public_reply.message },
+        status: "pending",
+        attempts: 0,
+      });
+    }
 
     // Log analytics
     await supabase.from("analytics_events").insert({
@@ -322,6 +368,28 @@ async function handleCommentEvent({
               .from("instagram_messages")
               .delete()
               .eq("conversation_id", convoId);
+          }
+          
+          // 2. Set Gate Metadata if required
+          let nextState = 'active';
+          if (config.email_capture?.enabled) nextState = 'awaiting_email';
+          else if (config.follow_gate?.enabled) nextState = 'awaiting_follow';
+          
+          if (nextState !== 'active') {
+             await supabase
+              .from("instagram_conversations")
+              .update({
+                campaign_metadata: { state: nextState, automation_id: automation.id }
+              })
+              .eq("id", convoId);
+          } else if (config.delivery?.message) {
+              // No gates, queue delivery message immediately
+              await supabase.from("jobs").insert({
+                type: "send_delivery_message",
+                payload: { igsid: commenterId, message: config.delivery.message, button: config.delivery.button, automation_id: automation.id },
+                status: "pending",
+                attempts: 0,
+              });
           }
         }
 
