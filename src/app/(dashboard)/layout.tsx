@@ -220,6 +220,9 @@ export default function DashboardLayout({ children }: { children: React.ReactNod
           transition: 'margin-left 0.28s cubic-bezier(0.4,0,0.2,1)',
           background: '#0d1117',
           overflowX: 'hidden',
+          overflowY: 'auto',
+          height: '100vh',
+          position: 'relative',
         }}>
           {children}
         </main>
