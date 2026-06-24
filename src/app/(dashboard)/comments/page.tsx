@@ -421,10 +421,26 @@ export default function CommentAutomationsPage() {
                       <h3 style={{ fontSize: 15, fontWeight: 700, color: '#e6edf3', overflow: 'hidden', textOverflow: 'ellipsis', whiteSpace: 'nowrap' }}>{a.name}</h3>
                       <Badge color={a.isActive ? 'green' : 'gray'}>{a.isActive ? '● Live' : '○ Paused'}</Badge>
                     </div>
-                    <div style={{ display: 'flex', gap: 6, flexWrap: 'wrap' }}>
-                      {a.keywords.includes('ANY_COMMENT') ? (
-                        <Badge color="teal">✨ Any Comment</Badge>
-                      ) : a.keywords.slice(0, 3).map(k => <Badge key={k} color="indigo">{k}</Badge>)}
+                    <div style={{ display: 'flex', alignItems: 'center', gap: 8, marginTop: 8 }}>
+                      <Toggle
+                        on={cfg.trigger_type === 'any'}
+                        onChange={async (v) => {
+                          const newTrigger = v ? 'any' : 'specific';
+                          const newConfig = { ...cfg, trigger_type: newTrigger };
+                          await fetch(`/api/automations?id=${a.id}`, {
+                            method: 'PATCH',
+                            headers: { 'Content-Type': 'application/json' },
+                            body: JSON.stringify({ campaign_config: newConfig })
+                          });
+                          fetchAll();
+                        }}
+                      />
+                      <span style={{ fontSize: 12, color: 'rgba(230,237,243,0.5)', marginLeft: 4 }}>Any Comment Trigger</span>
+                      <div style={{ display: 'flex', gap: 4 }}>
+                        {a.keywords.includes('ANY_COMMENT') ? (
+                          <Badge color="teal">✨ Any Comment</Badge>
+                        ) : a.keywords.slice(0, 3).map(k => <Badge key={k} color="indigo">{k}</Badge>)}
+                      </div>
                     </div>
                   </div>
                   <Toggle on={a.isActive} onChange={() => toggleActive(a.id, a.isActive)} />

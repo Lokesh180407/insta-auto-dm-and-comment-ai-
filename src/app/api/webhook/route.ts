@@ -240,7 +240,7 @@ async function handleCommentEvent({
 
   for (const automation of automations) {
     const isAnyComment =
-      automation.keywords.includes("ANY_COMMENT") || automation.keywords.includes("*");
+      automation.keywords.includes("ANY_COMMENT") || automation.keywords.includes("*") || (automation.campaign_config?.trigger_type === "any");
 
     let matchResult = { matched: false, matchedKeyword: null as string | null };
     if (isAnyComment) {
