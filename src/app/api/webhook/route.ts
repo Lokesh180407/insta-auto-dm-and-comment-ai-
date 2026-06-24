@@ -315,6 +315,14 @@ async function handleCommentEvent({
               updated_at: new Date().toISOString(),
             })
             .eq("id", convoId);
+
+          if (automation.remove_prev_dm_data) {
+            console.log(`[Webhook] remove_prev_dm_data is true. Deleting previous messages for conversation ID:`, convoId);
+            await supabase
+              .from("instagram_messages")
+              .delete()
+              .eq("conversation_id", convoId);
+          }
         }
 
         if (convoId) {

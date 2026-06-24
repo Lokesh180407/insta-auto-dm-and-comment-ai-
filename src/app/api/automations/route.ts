@@ -134,6 +134,7 @@ export async function POST(request: NextRequest) {
       isActive,
       wholeWordMatch,
       reportShareSlug: generateReportShareSlug(),
+      remove_prev_dm_data: body.removePrevDmData ?? body.remove_prev_dm_data ?? false,
     })
     .select()
     .single();
@@ -163,10 +164,13 @@ export async function PATCH(request: NextRequest) {
     return NextResponse.json({ success: false, error: "Missing id" }, { status: 400 });
 
   const body = await request.json();
-  const allowed = ["name", "goal", "keywords", "dmMessage", "isActive", "wholeWordMatch", "reportShareEnabled"];
+  const allowed = ["name", "goal", "keywords", "dmMessage", "isActive", "wholeWordMatch", "reportShareEnabled", "remove_prev_dm_data"];
   const updates: Record<string, unknown> = {};
   for (const k of allowed) {
     if (k in body) updates[k] = body[k];
+  }
+  if ("removePrevDmData" in body) {
+    updates["remove_prev_dm_data"] = body.removePrevDmData;
   }
 
   const { data, error } = await supabase

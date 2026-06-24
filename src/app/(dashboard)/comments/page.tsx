@@ -30,6 +30,8 @@ export default function CommentAutomationsPage() {
   const [keywords, setKeywords] = useState<string[]>([]);
   const [dmMessage, setDmMessage] = useState('');
   const [saving, setSaving] = useState(false);
+  const [triggerAnyComment, setTriggerAnyComment] = useState(false);
+  const [removePrevDmData, setRemovePrevDmData] = useState(false);
   
   // Selection
   const [templates, setTemplates] = useState<Template[]>([]);
@@ -78,8 +80,9 @@ export default function CommentAutomationsPage() {
   }
 
   async function createAutomation() {
-    if (!name || !postId || !dmMessage || keywords.length === 0) {
-      return alert("Please fill all required fields (Name, Post, Keywords, Message).");
+    const finalKeywords = triggerAnyComment ? ['ANY_COMMENT'] : keywords;
+    if (!name || !postId || !dmMessage || finalKeywords.length === 0) {
+      return alert("Please fill all required fields (Name, Post, Keywords/Trigger, Message).");
     }
     setSaving(true);
     try {
@@ -87,7 +90,13 @@ export default function CommentAutomationsPage() {
         method: 'POST',
         headers: { 'Content-Type': 'application/json' },
         body: JSON.stringify({
-          name, postId, keywords, dmMessage, isActive: true, wholeWordMatch: true
+          name, 
+          postId, 
+          keywords: finalKeywords, 
+          dmMessage, 
+          isActive: true, 
+          wholeWordMatch: true,
+          removePrevDmData
         })
       });
       const json = await res.json();
@@ -98,6 +107,8 @@ export default function CommentAutomationsPage() {
         setPostId('');
         setKeywords([]);
         setDmMessage('');
+        setTriggerAnyComment(false);
+        setRemovePrevDmData(false);
       } else {
         alert(json.error);
       }
@@ -155,10 +166,17 @@ export default function CommentAutomationsPage() {
                     />
                   </div>
 
-                  <div style={{ display: 'flex', flexWrap: 'wrap', gap: '6px', marginBottom: '16px' }}>
-                    {a.keywords.map((k: string) => (
-                      <span key={k} className="badge badge-indigo">{k}</span>
-                    ))}
+                  <div style={{ display: 'flex', flexWrap: 'wrap', gap: '6px', marginBottom: '12px' }}>
+                    {a.keywords.includes('ANY_COMMENT') || a.keywords.includes('*') ? (
+                      <span className="badge badge-teal">✨ Any Comment Trigger</span>
+                    ) : (
+                      a.keywords.map((k: string) => (
+                        <span key={k} className="badge badge-indigo">{k}</span>
+                      ))
+                    )}
+                    {a.remove_prev_dm_data && (
+                      <span className="badge badge-failed" style={{ borderColor: 'rgba(248,113,113,0.3)', background: 'rgba(248,113,113,0.06)' }}>🧹 Clean Inbox Enabled</span>
+                    )}
                   </div>
 
                   <div style={{ flex: 1, padding: '12px', background: 'rgba(255,255,255,0.02)', borderRadius: '8px', fontSize: '13px', color: 'rgba(230,237,243,0.7)', whiteSpace: 'pre-wrap', marginBottom: '20px' }}>
@@ -233,30 +251,59 @@ export default function CommentAutomationsPage() {
               )}
             </div>
 
-            <div>
-              <label className="label">Trigger Keywords (Comma separated)</label>
-              <input 
-                className="input" 
-                placeholder="e.g. LINK, GUIDE, YES" 
-                onKeyDown={e => {
-                  if (e.key === 'Enter' || e.key === ',') {
-                    e.preventDefault();
-                    const val = (e.target as HTMLInputElement).value.trim().toUpperCase();
-                    if (val && !keywords.includes(val)) {
-                      setKeywords([...keywords, val]);
-                      (e.target as HTMLInputElement).value = '';
-                    }
-                  }
-                }} 
-              />
-              <div style={{ display: 'flex', flexWrap: 'wrap', gap: '6px', marginTop: '12px' }}>
-                {keywords.map(k => (
-                  <span key={k} className="badge badge-indigo">
-                    {k} <button onClick={() => setKeywords(keywords.filter(x => x !== k))} style={{ background: 'none', border: 'none', color: 'inherit', marginLeft: '4px', cursor: 'pointer' }}>×</button>
-                  </span>
-                ))}
+            {/* Toggles section */}
+            <div style={{ display: 'flex', gap: '24px', flexWrap: 'wrap', padding: '16px', background: 'rgba(255,255,255,0.02)', borderRadius: '12px', border: '1px solid var(--border)' }}>
+              {/* Toggle 1: Any Comment Trigger */}
+              <div style={{ display: 'flex', alignItems: 'center', gap: '12px' }}>
+                <button 
+                  onClick={() => setTriggerAnyComment(!triggerAnyComment)} 
+                  className={`toggle ${triggerAnyComment ? 'on' : ''}`}
+                />
+                <div>
+                  <div style={{ fontSize: '13px', fontWeight: 700, color: '#e6edf3' }}>Trigger on Any Comment</div>
+                  <div style={{ fontSize: '11px', color: 'var(--muted)' }}>Respond to all comments instead of specific keywords</div>
+                </div>
+              </div>
+
+              {/* Toggle 2: Remove Prev DM Data */}
+              <div style={{ display: 'flex', alignItems: 'center', gap: '12px' }}>
+                <button 
+                  onClick={() => setRemovePrevDmData(!removePrevDmData)} 
+                  className={`toggle ${removePrevDmData ? 'on' : ''}`}
+                />
+                <div>
+                  <div style={{ fontSize: '13px', fontWeight: 700, color: '#e6edf3' }}>Remove Previous DM History</div>
+                  <div style={{ fontSize: '11px', color: 'var(--muted)' }}>Keep inbox clean by deleting older messages from this contact</div>
+                </div>
               </div>
             </div>
+
+            {!triggerAnyComment && (
+              <div>
+                <label className="label">Trigger Keywords (Comma separated)</label>
+                <input 
+                  className="input" 
+                  placeholder="e.g. LINK, GUIDE, YES" 
+                  onKeyDown={e => {
+                    if (e.key === 'Enter' || e.key === ',') {
+                      e.preventDefault();
+                      const val = (e.target as HTMLInputElement).value.trim().toUpperCase();
+                      if (val && !keywords.includes(val)) {
+                        setKeywords([...keywords, val]);
+                        (e.target as HTMLInputElement).value = '';
+                      }
+                    }
+                  }} 
+                />
+                <div style={{ display: 'flex', flexWrap: 'wrap', gap: '6px', marginTop: '12px' }}>
+                  {keywords.map(k => (
+                    <span key={k} className="badge badge-indigo">
+                      {k} <button onClick={() => setKeywords(keywords.filter(x => x !== k))} style={{ background: 'none', border: 'none', color: 'inherit', marginLeft: '4px', cursor: 'pointer' }}>×</button>
+                    </span>
+                  ))}
+                </div>
+              </div>
+            )}
 
             <div>
               <div style={{ display: 'flex', justifyContent: 'space-between', alignItems: 'center', marginBottom: '6px' }}>
