@@ -277,6 +277,57 @@ async function handleCommentEvent({
         .eq("automationId", automation.id)
         .eq("commentId", commentId);
 
+      // Create/update conversation & log sent message in DB
+      try {
+        const canReplyUntil = new Date(Date.now() + 24 * 60 * 60 * 1000).toISOString();
+        
+        // Check if conversation already exists for commenterId (igsid)
+        const { data: existingConvo } = await supabase
+          .from("instagram_conversations")
+          .select("id")
+          .eq("igsid", commenterId)
+          .maybeSingle();
+
+        let convoId = existingConvo?.id;
+
+        if (!convoId) {
+          const { data: newConvo } = await supabase
+            .from("instagram_conversations")
+            .insert({
+              igsid: commenterId,
+              username: commenterName || null,
+              name: commenterName || null,
+              can_reply_until: canReplyUntil,
+              is_active: true,
+              updated_at: new Date().toISOString(),
+            })
+            .select("id")
+            .single();
+          if (newConvo) {
+            convoId = newConvo.id;
+          }
+        } else {
+          await supabase
+            .from("instagram_conversations")
+            .update({
+              can_reply_until: canReplyUntil,
+              is_active: true,
+              updated_at: new Date().toISOString(),
+            })
+            .eq("id", convoId);
+        }
+
+        if (convoId) {
+          await supabase.from("instagram_messages").insert({
+            conversation_id: convoId,
+            role: "assistant",
+            content: dmMessage,
+          });
+        }
+      } catch (dbErr) {
+        console.error("[Comment Handler] Error logging sent message in DB:", dbErr);
+      }
+
     } catch (err) {
       const message = err instanceof Error ? err.message : "Unknown error";
       console.error("[Comment Handler] Send failed:", message);

@@ -3,141 +3,180 @@
 import { useState, useEffect } from 'react';
 import Link from 'next/link';
 
+interface Log {
+  id: string;
+  automationId: string;
+  commenterName: string | null;
+  commenterId: string;
+  commentText: string;
+  status: string;
+  created_at: string;
+}
+
+interface Automation {
+  id: string;
+  isActive: boolean;
+  name: string;
+}
+
 export default function DashboardPage() {
   const [loading, setLoading] = useState(true);
-
-  // Simulated metrics based on the StitchMCP generation
-  const metrics = [
-    { label: 'Total Conversations', value: '12,480', trend: '+12%', trendUp: true },
-    { label: 'Unread', value: '42', trend: '-5%', trendUp: false },
-    { label: "Today's Messages", value: '842', trend: '+24%', trendUp: true },
-    { label: 'Automation Success', value: '98.2%', trend: '+1.2%', trendUp: true },
-    { label: 'AI vs Human', value: '85% / 15%', trend: 'Steady', trendUp: true },
-  ];
-
-  const recentConversations = [
-    { id: '1', user: '@johndoe', message: 'How much is the premium plan?', status: 'Automated', time: '2m ago' },
-    { id: '2', user: '@sarahsmith', message: 'I need help with my order.', status: 'Human Needed', time: '15m ago' },
-    { id: '3', user: '@mike_j', message: 'Thanks!', status: 'Automated', time: '1h ago' },
-    { id: '4', user: '@emily_r', message: 'Do you ship to Canada?', status: 'Human Needed', time: '2h ago' },
-  ];
+  const [stats, setStats] = useState({
+    totalAutomations: 0,
+    activeAutomations: 0,
+    totalDmsSent: 0,
+    successRate: 0,
+  });
+  const [recentLogs, setRecentLogs] = useState<Log[]>([]);
 
   useEffect(() => {
-    // Simulate API fetch
-    const timer = setTimeout(() => setLoading(false), 800);
-    return () => clearTimeout(timer);
+    async function loadData() {
+      try {
+        const [autoRes, logsRes] = await Promise.all([
+          fetch('/api/automations'),
+          fetch('/api/logs?limit=50')
+        ]);
+        
+        const autoData = await autoRes.json();
+        const logsData = await logsRes.json();
+
+        const automations: Automation[] = autoData?.data || [];
+        const logs: Log[] = Array.isArray(logsData) ? logsData : [];
+
+        const totalAuto = automations.length;
+        const activeAuto = automations.filter(a => a.isActive).length;
+        const sentDms = logs.filter(l => l.status === 'SENT').length;
+        const successRate = logs.length > 0 ? Math.round((sentDms / logs.length) * 100) : 0;
+
+        setStats({
+          totalAutomations: totalAuto,
+          activeAutomations: activeAuto,
+          totalDmsSent: sentDms,
+          successRate: successRate,
+        });
+
+        setRecentLogs(logs.slice(0, 5));
+      } catch (err) {
+        console.error('Failed to load dashboard data', err);
+      } finally {
+        setLoading(false);
+      }
+    }
+    loadData();
   }, []);
 
   return (
-    <div style={{ padding: '24px', maxWidth: '1440px', margin: '0 auto', color: '#dae2fd', fontFamily: "'Plus Jakarta Sans', sans-serif" }}>
+    <div style={{ padding: '32px', maxWidth: '1440px', margin: '0 auto' }}>
       {/* Header */}
-      <div style={{ display: 'flex', justifyContent: 'space-between', alignItems: 'center', marginBottom: '32px' }}>
-        <div>
-          <h1 style={{ fontSize: '36px', fontWeight: 700, margin: 0, letterSpacing: '-0.02em', background: 'linear-gradient(135deg, #d0bcff, #a078ff)', WebkitBackgroundClip: 'text', WebkitTextFillColor: 'transparent' }}>
-            Command Center
-          </h1>
-          <p style={{ color: '#cbc3d7', marginTop: '8px', fontSize: '16px' }}>Your Instagram automation overview.</p>
-        </div>
+      <div style={{ marginBottom: '32px' }}>
+        <h1 style={{ fontSize: '32px', fontWeight: 800, margin: 0, letterSpacing: '-0.02em', color: '#e6edf3' }}>
+          Command Center
+        </h1>
+        <p style={{ color: 'rgba(230,237,243,0.5)', marginTop: '8px', fontSize: '15px' }}>
+          Overview of your personal Instagram comment automations.
+        </p>
       </div>
 
       {loading ? (
-        <div style={{ display: 'flex', justifyContent: 'center', alignItems: 'center', height: '400px' }}>
-          <div style={{ color: '#d0bcff', fontSize: '18px' }}>Loading Dashboard...</div>
+        <div style={{ display: 'flex', justifyContent: 'center', alignItems: 'center', height: '300px' }}>
+          <div className="spinner" style={{ color: '#2dd4bf', width: 30, height: 30 }} />
         </div>
       ) : (
         <>
           {/* Metrics Grid */}
-          <div style={{ display: 'grid', gridTemplateColumns: 'repeat(auto-fit, minmax(200px, 1fr))', gap: '24px', marginBottom: '48px' }}>
-            {metrics.map((m, i) => (
-              <div key={i} style={{ 
-                background: '#131b2e', 
-                border: '1px solid rgba(255,255,255,0.05)', 
-                borderRadius: '16px', 
-                padding: '24px',
-                boxShadow: '0 4px 20px rgba(0,0,0,0.2)'
-              }}>
-                <div style={{ fontSize: '14px', color: '#cbc3d7', marginBottom: '8px' }}>{m.label}</div>
-                <div style={{ fontSize: '32px', fontWeight: 700, color: '#dae2fd' }}>{m.value}</div>
-                <div style={{ fontSize: '12px', marginTop: '8px', color: m.trendUp ? '#10b981' : '#ef4444', fontWeight: 600 }}>
-                  {m.trend} from last period
-                </div>
-              </div>
-            ))}
+          <div style={{ display: 'grid', gridTemplateColumns: 'repeat(auto-fit, minmax(220px, 1fr))', gap: '20px', marginBottom: '40px' }}>
+            <div className="card">
+              <div style={{ fontSize: '12px', color: 'rgba(230,237,243,0.5)', marginBottom: '8px', textTransform: 'uppercase', fontWeight: 600, letterSpacing: '0.05em' }}>Total Automations</div>
+              <div style={{ fontSize: '36px', fontWeight: 800, color: '#e6edf3' }}>{stats.totalAutomations}</div>
+            </div>
+            <div className="card">
+              <div style={{ fontSize: '12px', color: 'rgba(230,237,243,0.5)', marginBottom: '8px', textTransform: 'uppercase', fontWeight: 600, letterSpacing: '0.05em' }}>Active Automations</div>
+              <div style={{ fontSize: '36px', fontWeight: 800, color: '#2dd4bf' }}>{stats.activeAutomations}</div>
+            </div>
+            <div className="card">
+              <div style={{ fontSize: '12px', color: 'rgba(230,237,243,0.5)', marginBottom: '8px', textTransform: 'uppercase', fontWeight: 600, letterSpacing: '0.05em' }}>DMs Sent</div>
+              <div style={{ fontSize: '36px', fontWeight: 800, color: '#818cf8' }}>{stats.totalDmsSent}</div>
+            </div>
+            <div className="card">
+              <div style={{ fontSize: '12px', color: 'rgba(230,237,243,0.5)', marginBottom: '8px', textTransform: 'uppercase', fontWeight: 600, letterSpacing: '0.05em' }}>Delivery Success</div>
+              <div style={{ fontSize: '36px', fontWeight: 800, color: '#34d399' }}>{stats.successRate}%</div>
+            </div>
           </div>
 
-          <div style={{ display: 'grid', gridTemplateColumns: '2fr 1fr', gap: '32px' }}>
-            {/* Chart Area */}
-            <div style={{ 
-              background: '#131b2e', 
-              border: '1px solid rgba(255,255,255,0.05)', 
-              borderRadius: '24px', 
-              padding: '32px',
-              minHeight: '400px',
-              display: 'flex',
-              flexDirection: 'column'
-            }}>
-              <h2 style={{ fontSize: '20px', fontWeight: 600, margin: '0 0 24px 0' }}>Messages Over Time</h2>
-              <div style={{ 
-                flex: 1, 
-                background: 'linear-gradient(180deg, rgba(139,92,246,0.1) 0%, rgba(139,92,246,0) 100%)', 
-                borderRadius: '12px', 
-                border: '1px dashed rgba(139,92,246,0.2)',
-                display: 'flex',
-                alignItems: 'center',
-                justifyContent: 'center',
-                color: '#8b5cf6'
-              }}>
-                [Chart Component Placeholder]
+          <div style={{ display: 'grid', gridTemplateColumns: 'repeat(auto-fit, minmax(400px, 1fr))', gap: '32px' }}>
+            {/* Quick Actions */}
+            <div className="card">
+              <div className="section-header">
+                <h2 className="section-title">Quick Actions</h2>
+              </div>
+              <div style={{ display: 'flex', flexDirection: 'column', gap: '12px' }}>
+                <Link href="/comments" style={{ textDecoration: 'none' }}>
+                  <div style={{ padding: '16px', background: 'rgba(45,212,191,0.06)', border: '1px solid rgba(45,212,191,0.15)', borderRadius: '12px', color: '#2dd4bf', fontWeight: 600, display: 'flex', alignItems: 'center', justifyContent: 'space-between' }}>
+                    <span>Create Comment Automation</span>
+                    <span>→</span>
+                  </div>
+                </Link>
+                <Link href="/templates" style={{ textDecoration: 'none' }}>
+                  <div style={{ padding: '16px', background: 'rgba(129,140,248,0.06)', border: '1px solid rgba(129,140,248,0.15)', borderRadius: '12px', color: '#818cf8', fontWeight: 600, display: 'flex', alignItems: 'center', justifyContent: 'space-between' }}>
+                    <span>Manage Message Templates</span>
+                    <span>→</span>
+                  </div>
+                </Link>
+                <Link href="/inbox" style={{ textDecoration: 'none' }}>
+                  <div style={{ padding: '16px', background: 'rgba(255,255,255,0.03)', border: '1px solid rgba(255,255,255,0.06)', borderRadius: '12px', color: '#e6edf3', fontWeight: 600, display: 'flex', alignItems: 'center', justifyContent: 'space-between' }}>
+                    <span>View Sent Inbox</span>
+                    <span>→</span>
+                  </div>
+                </Link>
               </div>
             </div>
 
             {/* Recent Activity */}
-            <div style={{ 
-              background: '#131b2e', 
-              border: '1px solid rgba(255,255,255,0.05)', 
-              borderRadius: '24px', 
-              padding: '32px'
-            }}>
-              <h2 style={{ fontSize: '20px', fontWeight: 600, margin: '0 0 24px 0' }}>Recent Activity</h2>
-              <div style={{ display: 'flex', flexDirection: 'column', gap: '16px' }}>
-                {recentConversations.map((conv) => (
-                  <div key={conv.id} style={{ 
-                    display: 'flex', 
-                    alignItems: 'center', 
-                    justifyContent: 'space-between',
-                    padding: '16px',
-                    background: '#171f33',
-                    borderRadius: '12px',
-                    border: '1px solid rgba(255,255,255,0.02)'
-                  }}>
-                    <div>
-                      <div style={{ fontSize: '14px', fontWeight: 600, color: '#dae2fd' }}>{conv.user}</div>
-                      <div style={{ fontSize: '12px', color: '#cbc3d7', marginTop: '4px', maxWidth: '150px', whiteSpace: 'nowrap', overflow: 'hidden', textOverflow: 'ellipsis' }}>
-                        {conv.message}
+            <div className="card">
+              <div className="section-header">
+                <h2 className="section-title">Recent DM Logs</h2>
+              </div>
+              {recentLogs.length === 0 ? (
+                <div style={{ padding: '40px', textAlign: 'center', color: 'rgba(230,237,243,0.3)', fontSize: '14px' }}>
+                  No recent activity found.
+                </div>
+              ) : (
+                <div style={{ display: 'flex', flexDirection: 'column', gap: '12px' }}>
+                  {recentLogs.map((log) => (
+                    <div key={log.id} style={{ 
+                      display: 'flex', 
+                      alignItems: 'center', 
+                      justifyContent: 'space-between',
+                      padding: '16px',
+                      background: 'rgba(255,255,255,0.02)',
+                      borderRadius: '12px',
+                      border: '1px solid rgba(255,255,255,0.05)'
+                    }}>
+                      <div style={{ flex: 1, minWidth: 0, paddingRight: '16px' }}>
+                        <div style={{ fontSize: '13px', fontWeight: 600, color: '#e6edf3' }}>
+                          @{log.commenterName || log.commenterId}
+                        </div>
+                        <div style={{ fontSize: '12px', color: 'rgba(230,237,243,0.5)', marginTop: '4px', whiteSpace: 'nowrap', overflow: 'hidden', textOverflow: 'ellipsis' }}>
+                          &quot;{log.commentText}&quot;
+                        </div>
+                      </div>
+                      <div style={{ textAlign: 'right', flexShrink: 0 }}>
+                        <span className={`badge ${log.status === 'SENT' ? 'badge-sent' : log.status === 'FAILED' ? 'badge-failed' : 'badge-pending'}`}>
+                          {log.status === 'SENT' ? '✅ Sent' : log.status === 'FAILED' ? '❌ Failed' : '⏳ Pending'}
+                        </span>
+                        <div style={{ fontSize: '10px', color: 'rgba(230,237,243,0.3)', marginTop: '8px' }}>
+                          {new Date(log.created_at).toLocaleTimeString([], { hour: '2-digit', minute: '2-digit' })}
+                        </div>
                       </div>
                     </div>
-                    <div style={{ textAlign: 'right' }}>
-                      <span style={{ 
-                        display: 'inline-block',
-                        padding: '4px 10px', 
-                        borderRadius: '999px', 
-                        fontSize: '11px', 
-                        fontWeight: 600,
-                        background: conv.status === 'Automated' ? 'rgba(16, 185, 129, 0.1)' : 'rgba(239, 68, 68, 0.1)',
-                        color: conv.status === 'Automated' ? '#10b981' : '#ef4444'
-                      }}>
-                        {conv.status}
-                      </span>
-                      <div style={{ fontSize: '11px', color: '#958ea0', marginTop: '6px' }}>{conv.time}</div>
-                    </div>
+                  ))}
+                  <div style={{ marginTop: '16px', textAlign: 'center' }}>
+                    <Link href="/logs" style={{ color: '#2dd4bf', fontSize: '13px', textDecoration: 'none', fontWeight: 600 }}>
+                      View All Logs →
+                    </Link>
                   </div>
-                ))}
-              </div>
-              <div style={{ marginTop: '24px', textAlign: 'center' }}>
-                <Link href="/inbox" style={{ color: '#d0bcff', fontSize: '14px', textDecoration: 'none', fontWeight: 600 }}>
-                  View All Conversations →
-                </Link>
-              </div>
+                </div>
+              )}
             </div>
           </div>
         </>
