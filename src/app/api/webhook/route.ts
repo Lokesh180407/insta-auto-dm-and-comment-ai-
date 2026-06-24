@@ -222,18 +222,23 @@ async function handleCommentEvent({
   commenterName?: string;
   mediaId: string;
 }) {
-  // Find active automations for this post
-  const { data: automations, error: automationsErr } = await supabase
+  // Find active automations
+  const { data: allAutomations, error: automationsErr } = await supabase
     .from("automations")
     .select(`*, tracked_links(*)`)
-    .eq("postId", mediaId)
     .eq("isActive", true);
 
   if (automationsErr) {
     console.error("[Comment Handler] DB error fetching automations:", automationsErr);
     return;
   }
-  if (!automations?.length) {
+
+  // Filter for automations targeting this specific post OR 'any' post trigger
+  const automations = (allAutomations || []).filter(a => 
+    a.postId === mediaId || a.campaign_config?.trigger_type === "any"
+  );
+
+  if (!automations.length) {
     console.log("[Comment Handler] No active automations for postId:", mediaId);
     return;
   }
