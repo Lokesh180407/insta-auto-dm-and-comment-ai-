@@ -647,10 +647,27 @@ export default function CommentAutomationsPage() {
 
             {/* Keywords */}
             <div style={cardStyle}>
-              <h2 style={{ fontSize: 18, fontWeight: 700, marginBottom: 6, color: '#e6edf3' }}>💬 Comment Trigger</h2>
-              <p style={{ fontSize: 13, color: 'rgba(230,237,243,0.4)', marginBottom: 20 }}>Define what triggers your automation</p>
+              <div style={{ display: 'flex', justifyContent: 'space-between', alignItems: 'flex-start', marginBottom: 20 }}>
+                <div>
+                  <h2 style={{ fontSize: 18, fontWeight: 700, marginBottom: 4, color: '#e6edf3' }}>💬 Comment Trigger</h2>
+                  <p style={{ fontSize: 13, color: 'rgba(230,237,243,0.4)' }}>Define what triggers your automation</p>
+                </div>
+                <div style={{ display: 'flex', alignItems: 'center', gap: 10 }}>
+                   <span style={{ fontSize: 13, color: keywords.includes('ANY_COMMENT') || config.trigger_type === 'any' ? '#2dd4bf' : 'rgba(230,237,243,0.5)', fontWeight: 600 }}>Any Comment</span>
+                   <Toggle 
+                     on={keywords.includes('ANY_COMMENT') || config.trigger_type === 'any'} 
+                     onChange={(v) => {
+                        if (v) {
+                           setKeywords(['ANY_COMMENT']);
+                        } else {
+                           setKeywords(keywords.filter(k => k !== 'ANY_COMMENT'));
+                        }
+                     }} 
+                   />
+                </div>
+              </div>
 
-              {config.trigger_type !== 'any' && (
+              {(!keywords.includes('ANY_COMMENT') && config.trigger_type !== 'any') ? (
                 <div>
                   <label style={labelStyle}>Trigger Keywords</label>
                   <p style={{ fontSize: 12, color: 'rgba(230,237,243,0.4)', marginBottom: 10 }}>Press Enter or comma to add. Case-insensitive. Emoji supported 🎉</p>
@@ -674,9 +691,7 @@ export default function CommentAutomationsPage() {
                     {keywords.length === 0 && <p style={{ fontSize: 13, color: 'rgba(230,237,243,0.3)', fontStyle: 'italic' }}>No keywords added yet</p>}
                   </div>
                 </div>
-              )}
-
-              {config.trigger_type === 'any' && (
+              ) : (
                 <div style={{ padding: 16, background: 'rgba(45,212,191,0.06)', borderRadius: 12, border: '1px solid rgba(45,212,191,0.15)' }}>
                   <p style={{ fontSize: 14, color: '#2dd4bf', fontWeight: 600 }}>✨ Any Comment Mode Active</p>
                   <p style={{ fontSize: 13, color: 'rgba(230,237,243,0.5)', marginTop: 4 }}>This automation responds to every comment — no keywords needed. Perfect for giveaways and broad engagement.</p>
